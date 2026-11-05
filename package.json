@@ -1,0 +1,9 @@
+{
+  "name": "vehicle-lab",
+  "version": "1.0.0",
+  "description": "儿童 3D 汽车拆装学习游戏",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080"
+  }
+}

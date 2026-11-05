@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>汽车拆装小工坊 · 3D 汽车原理乐园</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23132136'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle'%3E%F0%9F%94%A7%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="./css/style.css">
+<script type="importmap">
+{"imports":{"three":"./vendor/three.module.js"}}
+</script>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="brand">
+      <div class="logo">🔧</div>
+      <div class="brand-text">
+        <h1>汽车拆装小工坊</h1>
+        <p>点一点、拖一拖，认识汽车的每个零件</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="btn-principle" class="ghost-btn">📖 工作原理</button>
+      <button id="btn-sound" class="ghost-btn" aria-pressed="true">🔊 音效</button>
+    </div>
+  </header>
+
+  <aside id="garage">
+    <div class="garage-head">
+      <span>车库</span>
+      <span class="garage-count" id="garage-count"></span>
+    </div>
+    <div id="garage-list"></div>
+  </aside>
+
+  <main id="stage">
+    <div id="canvas-wrap"></div>
+
+    <div id="vehicle-info">
+      <div class="vi-title"><span id="vi-icon">🚗</span><span id="vi-name">小轿车</span></div>
+      <div class="vi-tag" id="vi-tag">家用车</div>
+      <div class="vi-intro" id="vi-intro"></div>
+    </div>
+
+    <div id="progress">
+      <div class="progress-label"><span id="progress-text">已拆下 0 / 0</span></div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+
+    <div id="toolbar">
+      <div class="mode-group" id="mode-group">
+        <button class="mode-btn active" data-mode="explore">🔍 自由探秘</button>
+        <button class="mode-btn" data-mode="assemble">🧩 组装挑战</button>
+        <button class="mode-btn" data-mode="demo">🚀 运转演示</button>
+      </div>
+      <div class="act-group">
+        <button class="act-btn" id="btn-explode">全部拆开</button>
+        <button class="act-btn" id="btn-attach">全部装回</button>
+        <button class="act-btn icon-only" id="btn-reset" title="重置视角">🎯</button>
+      </div>
+    </div>
+
+    <div id="part-card" class="hidden">
+      <button class="card-close" id="card-close">×</button>
+      <div class="card-head">
+        <span class="card-dot" id="card-dot"></span>
+        <span class="card-name" id="card-name"></span>
+      </div>
+      <div class="card-desc" id="card-desc"></div>
+      <div class="card-tip"><span class="tip-icon">💡</span><span id="card-tip"></span></div>
+      <div class="card-hint" id="card-hint">再点一次可以装回去</div>
+    </div>
+
+    <div id="principle-panel" class="hidden">
+      <button class="card-close" id="principle-close">×</button>
+      <div class="pp-head"><span id="pp-icon">📖</span> 它是怎么工作的？</div>
+      <div class="pp-title" id="pp-title"></div>
+      <ol class="pp-steps" id="pp-steps"></ol>
+      <div class="pp-foot">💡 小提示：进入「运转演示」，看看零件动起来！</div>
+    </div>
+
+    <div id="hint-bubble" class="hidden"></div>
+    <div id="tooltip" class="hidden"></div>
+
+    <div id="celebrate" class="hidden">
+      <div class="celebrate-card">
+        <div class="celebrate-emoji">🎉</div>
+        <h2 id="celebrate-title">组装完成！</h2>
+        <p id="celebrate-sub">你已经把这辆车的零件全部装好啦！</p>
+        <div class="stars" id="celebrate-stars">⭐⭐⭐</div>
+        <div class="celebrate-actions">
+          <button class="primary-btn" id="btn-again">再玩一次</button>
+          <button class="ghost-btn" id="btn-next">下一辆车 →</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

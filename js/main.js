@@ -1,0 +1,830 @@
+import * as THREE from 'three';
+import { OrbitControls } from '../vendor/OrbitControls.js';
+import { RoomEnvironment } from '../vendor/RoomEnvironment.js';
+import { VEHICLES, CATEGORIES, CATEGORY_META } from './data/index.js';
+
+/* ---------------- 基础环境 ---------------- */
+const stage = document.getElementById('canvas-wrap');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.domElement.style.display = 'block';
+renderer.domElement.style.touchAction = 'none';
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 300);
+camera.position.set(7, 6, 9);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.075;
+controls.minPolarAngle = 0.12;
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.target.set(0, 1, 0);
+controls.enablePan = false;
+
+/* 灯光 */
+scene.add(new THREE.HemisphereLight(0xdfeaff, 0x2b3a52, 0.95));
+scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+
+const sun = new THREE.DirectionalLight(0xffffff, 2.4);
+sun.position.set(9, 14, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -11;
+sun.shadow.camera.right = 11;
+sun.shadow.camera.top = 13;
+sun.shadow.camera.bottom = -8;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 45;
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.02;
+scene.add(sun);
+
+const rim = new THREE.DirectionalLight(0x88bbff, 1.0);
+rim.position.set(-8, 6, -10);
+scene.add(rim);
+
+/* 环境反射，让车漆有光泽 */
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.05).texture;
+
+/* 展台 */
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a1322, roughness: 1, metalness: 0 });
+const floor = new THREE.Mesh(new THREE.CircleGeometry(30, 72), floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -0.34;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const grid = new THREE.GridHelper(50, 50, 0x2c4a78, 0x18273f);
+grid.position.y = -0.31;
+grid.material.transparent = true;
+grid.material.opacity = 0.45;
+scene.add(grid);
+
+const plate = new THREE.Mesh(
+  new THREE.CylinderGeometry(7.6, 7.9, 0.3, 72),
+  new THREE.MeshStandardMaterial({ color: 0x16243c, roughness: 0.75, metalness: 0.25 })
+);
+plate.position.y = -0.15;
+plate.receiveShadow = true;
+scene.add(plate);
+
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x4ea8ff, transparent: true, opacity: 0.28 });
+[7.35, 8.4].forEach((r, i) => {
+  const ring = new THREE.Mesh(new THREE.RingGeometry(r, r + 0.06, 96), ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.012 + i * 0.001;
+  scene.add(ring);
+});
+
+/* ---------------- 材质与几何缓存 ---------------- */
+const matCache = new Map();
+function getMaterial(pc) {
+  // 玻璃单独用更光滑、更通透的参数，看起来才像车窗
+  const metal = pc.metal !== undefined ? pc.metal : (pc.gl ? 0.15 : 0.2);
+  const rough = pc.rough !== undefined ? pc.rough : (pc.gl ? 0.12 : 0.55);
+  const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.34 : 1);
+  const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1].join('|');
+  if (matCache.has(key)) return matCache.get(key);
+  const m = new THREE.MeshStandardMaterial({
+    color: pc.c,
+    metalness: metal,
+    roughness: rough,
+    transparent: !!pc.gl || opacity < 1,
+    opacity,
+    emissive: new THREE.Color(pc.e || 0x000000),
+    emissiveIntensity: pc.ei || 1,
+    side: pc.gl ? THREE.DoubleSide : THREE.FrontSide,
+    depthWrite: pc.gl ? false : true
+  });
+  matCache.set(key, m);
+  return m;
+}
+
+const geoCache = new Map();
+function getGeometry(pc) {
+  const key = pc.g + ':' + pc.s.join(',');
+  if (geoCache.has(key)) return geoCache.get(key);
+  let geo;
+  switch (pc.g) {
+    case 'box': geo = new THREE.BoxGeometry(pc.s[0], pc.s[1], pc.s[2]); break;
+    case 'cyl': geo = new THREE.CylinderGeometry(pc.s[0], pc.s[1], pc.s[2], pc.s[3]); break;
+    case 'sphere': geo = new THREE.SphereGeometry(pc.s[0], 20, 16); break;
+    case 'torus': geo = new THREE.TorusGeometry(pc.s[0], pc.s[1], pc.s[2], pc.s[3]); break;
+    case 'cone': geo = new THREE.ConeGeometry(pc.s[0], pc.s[1], pc.s[2]); break;
+    default: geo = new THREE.BoxGeometry(1, 1, 1);
+  }
+  geoCache.set(key, geo);
+  return geo;
+}
+
+/* ---------------- 车辆与零件 ---------------- */
+const vehicleRoot = new THREE.Group();
+scene.add(vehicleRoot);
+
+const markerRoot = new THREE.Group();
+markerRoot.visible = false;
+vehicleRoot.add(markerRoot);
+
+const parts = [];
+let currentVehicle = VEHICLES[0];
+let scatterRadius = 3.2;
+let baseMaxDim = 4;
+let baseCenterY = 1;
+
+function clearVehicle() {
+  vehicleRoot.children.slice().forEach((c) => { if (c !== markerRoot) vehicleRoot.remove(c); });
+  while (markerRoot.children.length) {
+    const m = markerRoot.children.pop();
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+  }
+  parts.length = 0;
+}
+
+function buildVehicle(def) {
+  clearVehicle();
+  markerRoot.visible = false;
+
+  def.parts.forEach((pd, index) => {
+    const group = new THREE.Group();
+    group.position.set(pd.pos[0], pd.pos[1], pd.pos[2]);
+    group.userData.part = null;
+
+    pd.pieces.forEach((pc) => {
+      const mesh = new THREE.Mesh(getGeometry(pc), getMaterial(pc));
+      mesh.position.set(pc.p[0], pc.p[1], pc.p[2]);
+      if (pc.r) mesh.rotation.set(pc.r[0], pc.r[1], pc.r[2]);
+      mesh.castShadow = !pc.gl;
+      mesh.receiveShadow = !pc.gl;
+      mesh.userData.baseY = mesh.position.y;
+      group.add(mesh);
+    });
+
+    const part = {
+      def: pd,
+      index,
+      group,
+      home: new THREE.Vector3(pd.pos[0], pd.pos[1], pd.pos[2]),
+      offset: new THREE.Vector3(...(pd.off || [0, 0.9, 0])),
+      target: new THREE.Vector3(pd.pos[0], pd.pos[1], pd.pos[2]),
+      state: 'placed',
+      phase: index * 1.7,
+      restY: 0.03,
+      foot: 1,
+      flashMats: [],
+      marker: null
+    };
+    group.userData.part = part;
+    parts.push(part);
+    vehicleRoot.add(group);
+  });
+
+  vehicleRoot.updateMatrixWorld(true);
+
+  // 组装模式的幽灵框
+  parts.forEach((p) => {
+    const bb = new THREE.Box3().setFromObject(p.group);
+    const size = bb.getSize(new THREE.Vector3());
+    const center = bb.getCenter(new THREE.Vector3());
+    // 散落时贴地摆放：把零件最低点落到地面高度
+    p.restY = 0.03 - (bb.min.y - p.home.y);
+    p.foot = Math.max(size.x, size.z);
+    const boxGeo = new THREE.BoxGeometry(
+      Math.max(size.x, 0.3) + 0.05,
+      Math.max(size.y, 0.3) + 0.05,
+      Math.max(size.z, 0.3) + 0.05
+    );
+    const edges = new THREE.EdgesGeometry(boxGeo);
+    boxGeo.dispose();
+    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
+      color: 0x4ea8ff, transparent: true, opacity: 0.55
+    }));
+    line.position.copy(center);
+    line.visible = false;
+    p.marker = line;
+    markerRoot.add(line);
+
+    if (p.def.anim === 'flash') {
+      p.group.children.forEach((m) => {
+        m.material = m.material.clone();
+        m.material.transparent = false;
+        p.flashMats.push(m.material);
+      });
+    }
+  });
+
+  // 记录整车尺寸，用于相机取景（不受零件散落影响）
+  const vbb = new THREE.Box3().setFromObject(vehicleRoot);
+  const vsize = vbb.getSize(new THREE.Vector3());
+  baseMaxDim = Math.max(vsize.x, vsize.y, vsize.z, 3.2);
+  baseCenterY = vbb.getCenter(new THREE.Vector3()).y;
+  scatterRadius = Math.min(5.6, Math.max(4.4, baseMaxDim * 0.9));
+}
+
+let camZoom = 1;
+
+function fitCamera(zoom = 1) {
+  camZoom = zoom;
+  const maxDim = baseMaxDim;
+  // 竖屏时横向视野更窄，需要拉远一点才能看全
+  const aspectFactor = Math.max(0.62, Math.min(1, camera.aspect / 1.55));
+  const dist = (maxDim * 1.45 + 3.2) * zoom / aspectFactor;
+
+  controls.target.set(0, Math.max(0.55, Math.min(1.6, baseCenterY * 0.72)), 0);
+  const dir = new THREE.Vector3(0.66, 0.46, 0.92).normalize();
+  camera.position.copy(controls.target).add(dir.multiplyScalar(dist));
+  camera.lookAt(controls.target);
+  controls.minDistance = maxDim * 0.55;
+  controls.maxDistance = dist * 2.6;
+  controls.update();
+}
+
+// 相机所在的方位角：零件散落时以它为基准，从车后方开始摆
+const CAM_AZIMUTH = Math.atan2(0.92, 0.66);
+
+function updateScatter() {
+  // 大零件摆到车后方，小零件才允许靠近镜头一侧，避免挡住视线
+  const sorted = parts.slice().sort((a, b) => b.foot - a.foot);
+  const n = sorted.length;
+  sorted.forEach((p, i) => {
+    const angle = CAM_AZIMUTH + Math.PI / 2 + (i / n) * Math.PI * 2 + (i % 2 ? 0.05 : -0.05);
+    const r = scatterRadius + (i % 3) * 0.34 + (p.foot > 2.2 ? 0.4 : 0);
+    p.group.position.set(
+      Math.cos(angle) * r,
+      p.restY,
+      Math.sin(angle) * r
+    );
+    p.target.copy(p.group.position);
+  });
+}
+
+/* ---------------- 交互状态 ---------------- */
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2(-10, -10);
+const dragPlane = new THREE.Plane();
+const clock = new THREE.Clock();
+
+let mode = 'explore';
+let dragging = null;
+let dragOffset = new THREE.Vector3();
+let hovered = null;
+let downInfo = null;
+
+let soundOn = true;
+let winShown = false;
+let completed = new Set();
+try {
+  completed = new Set(JSON.parse(localStorage.getItem('vl-completed') || '[]'));
+} catch (e) { completed = new Set(); }
+
+/* ---------------- UI ---------------- */
+const $ = (id) => document.getElementById(id);
+
+function buildGarage() {
+  const list = $('garage-list');
+  list.innerHTML = '';
+  CATEGORIES.forEach((cat) => {
+    const items = VEHICLES.filter((v) => v.category === cat);
+    if (!items.length) return;
+    const label = document.createElement('div');
+    label.className = 'cat-label';
+    label.textContent = CATEGORY_META[cat].icon + ' ' + cat;
+    list.appendChild(label);
+    items.forEach((v) => {
+      const el = document.createElement('div');
+      el.className = 'veh-item';
+      el.dataset.id = v.id;
+      el.innerHTML =
+        '<div class="veh-icon">' + v.icon + '</div>' +
+        '<div class="veh-meta"><div class="veh-name">' + v.name + '</div>' +
+        '<div class="veh-sub">' + v.parts.length + ' 个零件</div></div>' +
+        '<div class="veh-done">✔</div>';
+      el.addEventListener('click', () => selectVehicle(v.id));
+      list.appendChild(el);
+    });
+  });
+  $('garage-count').textContent = VEHICLES.length + ' 辆';
+  refreshGarageState();
+}
+
+function refreshGarageState() {
+  document.querySelectorAll('.veh-item').forEach((el) => {
+    el.classList.toggle('active', el.dataset.id === currentVehicle.id);
+    el.classList.toggle('done', completed.has(el.dataset.id));
+  });
+}
+
+function selectVehicle(id) {
+  const v = VEHICLES.find((x) => x.id === id);
+  if (!v) return;
+  currentVehicle = v;
+  hideCard();
+  hidePrinciple();
+  hideCelebrate();
+  buildVehicle(v);
+  fitCamera();
+  $('vi-icon').textContent = v.icon;
+  $('vi-name').textContent = v.name;
+  $('vi-tag').textContent = v.category;
+  $('vi-intro').textContent = v.intro;
+  $('pp-icon').textContent = v.icon;
+  $('pp-title').textContent = v.intro;
+  $('pp-steps').innerHTML = v.steps.map((s) => '<li>' + s + '</li>').join('');
+  setMode('explore', true);
+  refreshGarageState();
+  hint('点一点零件，看看它是什么～');
+}
+
+function setMode(m, silent) {
+  mode = m;
+  winShown = false;
+  document.querySelectorAll('.mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === m));
+  hideCard();
+  parts.forEach((p) => {
+    p.group.rotation.set(0, 0, 0);
+    p.group.scale.setScalar(1);
+    p.group.children.forEach((m) => {
+      if (m.userData.baseY !== undefined) m.position.y = m.userData.baseY;
+    });
+    p.marker.visible = false;
+    if (p.marker) p.marker.material.opacity = 0.55;
+  });
+  hovered = null;
+  markerRoot.visible = false;
+
+  if (m === 'assemble') {
+    markerRoot.visible = true;
+    updateScatter();
+    parts.forEach((p) => {
+      p.state = 'detached';
+      p.marker.visible = false;
+    });
+    fitCamera(1.55);
+    if (!silent) hint('把零件拖进蓝色框框，把汽车装好！');
+  } else {
+    parts.forEach((p) => {
+      p.state = 'placed';
+      p.target.copy(p.home);
+      p.group.position.copy(p.home);
+    });
+    fitCamera(1);
+    if (m === 'demo' && !silent) {
+      $('principle-panel').classList.remove('hidden');
+      hint('发动机、车轮和机械臂动起来啦！');
+    }
+  }
+
+  refreshProgress();
+}
+
+function refreshProgress() {
+  const total = parts.length;
+  if (!total) return;
+  let label = '';
+  let value = 0;
+  if (mode === 'assemble') {
+    const done = parts.filter((p) => p.state === 'placed').length;
+    label = '已装好 ' + done + ' / ' + total;
+    value = done / total;
+  } else if (mode === 'explore') {
+    const off = parts.filter((p) => p.state !== 'placed').length;
+    label = '已拆下 ' + off + ' / ' + total;
+    value = off / total;
+  } else {
+    label = '运转演示中…';
+    value = 1;
+  }
+  $('progress-text').textContent = label;
+  $('progress-fill').style.width = Math.round(value * 100) + '%';
+}
+
+function showCard(part) {
+  $('card-dot').style.background = part.def.color;
+  $('card-dot').style.color = part.def.color;
+  $('card-name').textContent = part.def.name;
+  $('card-desc').textContent = part.def.desc;
+  $('card-tip').textContent = part.def.tip;
+  $('card-hint').textContent =
+    mode === 'explore' ? '再点一次可以装回去' :
+    mode === 'assemble' ? '按住它，拖到蓝色框框的位置' : '运转演示中，观察它怎么工作';
+  $('part-card').classList.remove('hidden');
+  $('principle-panel').classList.add('hidden');
+}
+
+function hideCard() { $('part-card').classList.add('hidden'); }
+function hidePrinciple() { $('principle-panel').classList.add('hidden'); }
+
+function togglePrinciple() {
+  const panel = $('principle-panel');
+  if (panel.classList.contains('hidden')) {
+    panel.classList.remove('hidden');
+    hideCard();
+  } else {
+    panel.classList.add('hidden');
+  }
+}
+
+function hideCelebrate() { $('celebrate').classList.add('hidden'); }
+
+let hintTimer = null;
+function hint(text, ms) {
+  const el = $('hint-bubble');
+  el.textContent = text;
+  el.classList.remove('hidden');
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => el.classList.add('hidden'), ms || 2300);
+}
+
+/* ---------------- 音效 ---------------- */
+let audioCtx = null;
+function sfx(type) {
+  if (!soundOn) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const notes = {
+      pick: [[520, 0.06]],
+      pop: [[640, 0.07]],
+      snap: [[880, 0.1], [1320, 0.13]],
+      win: [[523, 0.55], [659, 0.55], [784, 0.55], [1046, 0.7]]
+    }[type] || [[600, 0.08]];
+    const t0 = audioCtx.currentTime;
+    let offset = 0;
+    notes.forEach(([freq, dur]) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t0 + offset);
+      gain.gain.setValueAtTime(0, t0 + offset);
+      gain.gain.linearRampToValueAtTime(0.14, t0 + offset + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + offset + dur);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t0 + offset);
+      osc.stop(t0 + offset + dur + 0.02);
+      offset += dur * 0.75;
+    });
+  } catch (e) { /* 忽略音频错误 */ }
+}
+
+/* ---------------- 交互 ---------------- */
+function setPointer(e) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+function pickPart() {
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(parts.map((p) => p.group), true);
+  if (!hits.length) return null;
+  let obj = hits[0].object;
+  while (obj && !obj.userData.part) obj = obj.parent;
+  return obj ? obj.userData.part : null;
+}
+
+function onPointerDown(e) {
+  if (e.button !== undefined && e.button !== 0) return;
+  setPointer(e);
+  const part = pickPart();
+  downInfo = { x: e.clientX, y: e.clientY, part: part, moved: false };
+  if (mode === 'assemble' && part && part.state !== 'placed') {
+    dragging = part;
+    part.state = 'dragging';
+    controls.enabled = false;
+    dragPlane.setFromNormalAndCoplanarPoint(
+      camera.getWorldDirection(new THREE.Vector3()).normalize(),
+      part.group.position.clone()
+    );
+    const hitPoint = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(dragPlane, hitPoint)) {
+      dragOffset.copy(part.group.position).sub(hitPoint);
+    } else {
+      dragOffset.set(0, 0, 0);
+    }
+    if (hovered) { hovered.group.scale.setScalar(1); hovered = null; }
+    hideTooltip();
+    syncMarkers(part);
+    sfx('pick');
+  }
+}
+
+function onPointerMove(e) {
+  if (!downInfo) {
+    updateHover(e);
+    return;
+  }
+  if (Math.abs(e.clientX - downInfo.x) + Math.abs(e.clientY - downInfo.y) > 6) downInfo.moved = true;
+  if (dragging) {
+    setPointer(e);
+    raycaster.setFromCamera(pointer, camera);
+    const pt = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(dragPlane, pt)) {
+      pt.add(dragOffset);
+      pt.x = Math.max(-14, Math.min(14, pt.x));
+      pt.z = Math.max(-14, Math.min(14, pt.z));
+      pt.y = Math.max(Math.min(dragging.restY, 0.4), pt.y);
+      dragging.group.position.copy(pt);
+    }
+    hideTooltip();
+  }
+}
+
+function onPointerUp() {
+  if (!downInfo) return;
+  if (dragging) {
+    const p = dragging;
+    dragging = null;
+    controls.enabled = true;
+    // 屏幕上的位置也很接近时同样算装好（抵消拖拽平面带来的深度偏差）
+    const rect = renderer.domElement.getBoundingClientRect();
+    const sp = p.group.position.clone().project(camera);
+    const sh = p.home.clone().project(camera);
+    const screenDist = Math.hypot((sp.x - sh.x) * rect.width / 2, (sp.y - sh.y) * rect.height / 2);
+    if (p.group.position.distanceTo(p.home) < 1.05 || screenDist < 60) {
+      placePart(p);
+    } else {
+      p.state = 'detached';
+      p.target.set(p.group.position.x, p.restY, p.group.position.z);
+      sfx('pop');
+      hint('再靠近一点点就能装好啦～');
+    }
+    syncMarkers(null);
+    refreshProgress();
+  } else if (!downInfo.moved && downInfo.part) {
+    handleClick(downInfo.part);
+  }
+  downInfo = null;
+}
+
+function handleClick(part) {
+  showCard(part);
+  if (mode === 'explore') {
+    if (part.state === 'placed') {
+      part.state = 'detached';
+      part.target.copy(part.home).add(part.offset);
+      sfx('pop');
+    } else {
+      part.state = 'returning';
+      part.target.copy(part.home);
+      sfx('snap');
+    }
+    refreshProgress();
+  } else if (mode === 'assemble' && part.state !== 'placed') {
+    hint('按住零件，把它拖到蓝色框框的位置～');
+    if (part.marker) {
+      part.marker.visible = true;
+      const m = part.marker;
+      setTimeout(() => { if (m && hovered !== part) m.visible = false; }, 1100);
+    }
+  }
+}
+
+function placePart(part) {
+  part.state = 'returning';
+  part.target.copy(part.home);
+  if (part.marker) part.marker.visible = false;
+  sfx('snap');
+  refreshProgress();
+}
+
+function checkWin() {
+  if (winShown) return;
+  winShown = true;
+  completed.add(currentVehicle.id);
+  try { localStorage.setItem('vl-completed', JSON.stringify(Array.from(completed))); } catch (e) {}
+  refreshGarageState();
+  $('celebrate-title').textContent = '组装完成！';
+  $('celebrate-sub').textContent =
+    '你把「' + currentVehicle.name + '」的 ' + parts.length + ' 个零件全部装好啦！';
+  $('celebrate-stars').textContent = '⭐⭐⭐';
+  $('celebrate').classList.remove('hidden');
+  sfx('win');
+  spawnConfetti();
+}
+
+function spawnConfetti() {
+  const wrap = $('celebrate');
+  wrap.querySelectorAll('.confetti').forEach((c) => c.remove());
+  const colors = ['#4ea8ff', '#ffc857', '#4bd18a', '#ff6b6b', '#b78bff', '#ffffff'];
+  for (let i = 0; i < 46; i++) {
+    const d = document.createElement('div');
+    d.className = 'confetti';
+    d.style.left = Math.random() * 100 + '%';
+    d.style.background = colors[Math.floor(Math.random() * colors.length)];
+    d.style.animationDelay = (Math.random() * 0.7) + 's';
+    d.style.animationDuration = (1.8 + Math.random() * 1.6) + 's';
+    d.style.transform = 'rotate(' + Math.random() * 360 + 'deg)';
+    wrap.appendChild(d);
+  }
+}
+
+// 组装模式下，只在悬停/拖拽某零件时显示它的蓝色幽灵框
+function syncMarkers(part) {
+  if (mode !== 'assemble') return;
+  parts.forEach((p) => {
+    if (p.marker) p.marker.visible = (p === part && p.state !== 'placed');
+  });
+}
+
+function updateHover(e) {
+  if (e.target !== renderer.domElement) {
+    if (hovered) { hovered.group.scale.setScalar(1); hovered = null; }
+    $('tooltip').classList.add('hidden');
+    syncMarkers(null);
+    return;
+  }
+  const part = pickPart();
+  const tip = $('tooltip');
+  if (part) {
+    if (hovered !== part) {
+      if (hovered) hovered.group.scale.setScalar(1);
+      hovered = part;
+      part.group.scale.setScalar(1.045);
+      syncMarkers(part);
+    }
+    tip.textContent = part.def.name;
+    tip.classList.remove('hidden');
+    const rect = stage.getBoundingClientRect();
+    tip.style.left = (e.clientX - rect.left) + 'px';
+    tip.style.top = (e.clientY - rect.top) + 'px';
+    renderer.domElement.style.cursor = mode === 'assemble' && part.state !== 'placed' ? 'grab' : 'pointer';
+  } else {
+    if (hovered) { hovered.group.scale.setScalar(1); hovered = null; }
+    tip.classList.add('hidden');
+    syncMarkers(null);
+    renderer.domElement.style.cursor = 'grab';
+  }
+}
+
+function hideTooltip() {
+  $('tooltip').classList.add('hidden');
+  if (hovered) { hovered.group.scale.setScalar(1); hovered = null; }
+}
+
+function explodeAll() {
+  if (mode === 'assemble') {
+    setMode('assemble');
+    return;
+  }
+  parts.forEach((p) => {
+    p.state = 'detached';
+    p.target.copy(p.home).add(p.offset);
+  });
+  refreshProgress();
+  sfx('pop');
+  hint('所有零件都拆下来啦，点零件看它的本领～');
+}
+
+function attachAll(instant) {
+  parts.forEach((p) => {
+    p.state = 'returning';
+    p.target.copy(p.home);
+    if (p.marker) p.marker.visible = false;
+    if (instant) {
+      p.group.position.copy(p.home);
+      p.state = 'placed';
+    }
+  });
+  if (instant) {
+    parts.forEach((p) => p.group.rotation.set(0, 0, 0));
+  }
+  refreshProgress();
+}
+
+/* ---------------- 逐帧更新 ---------------- */
+function updateParts(dt, t) {
+  parts.forEach((p) => {
+    if (p.state !== 'dragging') {
+      p.group.position.lerp(p.target, 1 - Math.exp(-dt * 8.5));
+      if (p.state === 'returning' && p.group.position.distanceTo(p.target) < 0.05) {
+        p.group.position.copy(p.target);
+        p.state = 'placed';
+        refreshProgress();
+        if (mode === 'assemble' && parts.every((q) => q.state === 'placed')) checkWin();
+      }
+    }
+
+    if (mode === 'demo') {
+      if (p.def.spin === 'x') p.group.rotation.x += dt * 6;
+      if (p.def.anim === 'spin') p.group.rotation.z += dt * 1.5;
+    }
+
+    if (p.def.anim === 'flash' && p.flashMats.length) {
+      const pulse = 0.5 + Math.sin(t * 8 + p.phase) * 0.5;
+      p.flashMats.forEach((m) => { m.emissiveIntensity = 1.3 + pulse * 1.7; });
+    }
+
+    if (mode !== 'demo' || p.state !== 'placed') return;
+    const a = p.def.anim;
+    if (a === 'swing') {
+      p.group.rotation.x = Math.sin(t * 1.1 + p.phase) * 0.32;
+    } else if (a === 'bob') {
+      p.group.children.forEach((m) => {
+        m.position.y = m.userData.baseY + Math.sin(t * 1.5 + p.phase) * 0.12;
+      });
+    } else if (a === 'shake') {
+      p.group.children.forEach((m, i) => {
+        m.position.y = m.userData.baseY + Math.sin(t * 24 + i * 2) * 0.012;
+      });
+    }
+  });
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  updateParts(dt, clock.elapsedTime);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+function resize() {
+  const w = stage.clientWidth;
+  const h = stage.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h);
+  const prevAspect = camera.aspect;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  if (parts.length && Math.abs(prevAspect - camera.aspect) > 0.05) fitCamera(camZoom);
+}
+
+/* ---------------- 事件绑定 ---------------- */
+renderer.domElement.addEventListener('pointerdown', onPointerDown);
+window.addEventListener('pointermove', onPointerMove);
+window.addEventListener('pointerup', onPointerUp);
+window.addEventListener('resize', resize);
+if (window.ResizeObserver) new ResizeObserver(resize).observe(stage);
+
+document.querySelectorAll('.mode-btn').forEach((b) => {
+  b.addEventListener('click', () => setMode(b.dataset.mode));
+});
+$('btn-explode').addEventListener('click', explodeAll);
+$('btn-attach').addEventListener('click', () => { attachAll(false); hideCard(); });
+$('btn-reset').addEventListener('click', fitCamera);
+$('btn-principle').addEventListener('click', togglePrinciple);
+$('principle-close').addEventListener('click', hidePrinciple);
+$('card-close').addEventListener('click', hideCard);
+$('btn-sound').addEventListener('click', () => {
+  soundOn = !soundOn;
+  $('btn-sound').textContent = soundOn ? '🔊 音效' : '🔇 静音';
+  $('btn-sound').setAttribute('aria-pressed', String(soundOn));
+  if (soundOn) sfx('pop');
+});
+$('btn-again').addEventListener('click', () => { hideCelebrate(); setMode('assemble'); });
+$('btn-next').addEventListener('click', () => {
+  hideCelebrate();
+  const idx = VEHICLES.findIndex((v) => v.id === currentVehicle.id);
+  selectVehicle(VEHICLES[(idx + 1) % VEHICLES.length].id);
+});
+
+/* ---------------- 启动 ---------------- */
+buildGarage();
+setMode('explore', true);
+selectVehicle(VEHICLES[0].id);
+resize();
+animate();
+
+/* 便于自动化测试的调试接口（仅在 ?debug=1 时开启） */
+if (location.search.indexOf('debug') !== -1) {
+  window.__VL = {
+    parts,
+    camera,
+    renderer,
+    scene,
+    controls,
+    VEHICLES,
+    setMode,
+    selectVehicle,
+    get current() { return currentVehicle; },
+    project(v) {
+      const p = v.clone().project(camera);
+      const r = renderer.domElement.getBoundingClientRect();
+      return {
+        x: (p.x * 0.5 + 0.5) * r.width + r.left,
+        y: (-p.y * 0.5 + 0.5) * r.height + r.top
+      };
+    },
+    placeAll() {
+      parts.forEach((p) => {
+        p.group.position.copy(p.home);
+        p.target.copy(p.home);
+        p.state = 'placed';
+        p.marker.visible = false;
+      });
+      refreshProgress();
+    }
+  };
+}
+
