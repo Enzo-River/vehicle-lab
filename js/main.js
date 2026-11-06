@@ -407,7 +407,10 @@ function buildVehicle(def) {
       tipK: 0,
       tipDir: 0,
       sizeY: 0,
-      minDim: 0
+      minDim: 0,
+      half: new THREE.Vector3(),
+      // 是否已经离开过车身：刚拆下的零件还嵌在车里，先让它飞出去再启用车身碰撞
+      wasOutside: false
     };
     group.userData.part = part;
     parts.push(part);
@@ -425,6 +428,7 @@ function buildVehicle(def) {
     p.restY = 0.03 - (bb.min.y - p.home.y);
     p.sizeY = size.y;
     p.minDim = Math.min(size.x, size.y, size.z);
+    p.half = size.clone().multiplyScalar(0.5);
     p.foot = Math.max(size.x, size.z);
     // 落地时用来做零件之间的圆盘碰撞，长条零件取短边避免互相推得太远
     p.collR = Math.max(0.22, Math.min(1.3, Math.min(size.x, size.z) * 0.55 + 0.12));
@@ -501,6 +505,7 @@ function updateScatter() {
     p.spin = 0;
     p.tumble.set(0, 0, 0);
     p.tipK = 0;
+    p.wasOutside = false;
     p.target.copy(p.group.position);
   });
 }
@@ -1173,6 +1178,7 @@ function launchToSlot(p) {
   p.tilt.set((Math.random() - 0.5) * 0.1, 0, (Math.random() - 0.5) * 0.1);
   p.tipK = 0;
   p.tipDir = Math.random() < 0.5 ? -1 : 1;
+  p.wasOutside = false;
 }
 
 let lastThud = 0;
@@ -1263,6 +1269,66 @@ function resolveLooseCollisions() {
         }
       }
     }
+  }
+}
+
+// 拆下的零件撞到还没拆的车身 / 轮胎时，从最近的侧面弹开
+function resolveCarCollision(p) {
+  const pos = p.group.position;
+  const pad = p.collR * 0.6;
+  let hit = null;
+  for (const q of parts) {
+    if (q.state !== 'placed') continue;
+    const qx = q.group.position.x;
+    const qy = q.group.position.y;
+    const qz = q.group.position.z;
+    if (pos.x <= qx - q.half.x - pad || pos.x >= qx + q.half.x + pad) continue;
+    if (pos.z <= qz - q.half.z - pad || pos.z >= qz + q.half.z + pad) continue;
+    if (pos.y > qy + q.half.y + 0.04) continue;
+    if (pos.y + p.half.y * 0.6 < qy - q.half.y) continue;
+    hit = q;
+    break;
+  }
+  if (!hit) {
+    // 已经离开车身，之后只要再撞上来就会被弹开
+    p.wasOutside = true;
+    return;
+  }
+  // 刚拆下的零件本来就在车里，先让它飞出去，别把它卡住
+  if (!p.wasOutside) return;
+
+  const qx = hit.group.position.x;
+  const qz = hit.group.position.z;
+  const minX = qx - hit.half.x - pad;
+  const maxX = qx + hit.half.x + pad;
+  const minZ = qz - hit.half.z - pad;
+  const maxZ = qz + hit.half.z + pad;
+  const dl = pos.x - minX;
+  const dr = maxX - pos.x;
+  const db = pos.z - minZ;
+  const df = maxZ - pos.z;
+  const m = Math.min(dl, dr, db, df);
+  if (m === dl) {
+    pos.x = minX;
+    p.vel.x = -Math.abs(p.vel.x) - 0.25;
+  } else if (m === dr) {
+    pos.x = maxX;
+    p.vel.x = Math.abs(p.vel.x) + 0.25;
+  } else if (m === db) {
+    pos.z = minZ;
+    p.vel.z = -Math.abs(p.vel.z) - 0.25;
+  } else {
+    pos.z = maxZ;
+    p.vel.z = Math.abs(p.vel.z) + 0.25;
+  }
+  // 撞到车门时向上弹一下，像被车身撞开
+  if (p.state === 'flying') p.vel.y = Math.max(p.vel.y, 1.1);
+  p.squash = Math.max(p.squash, 0.45);
+  p.spin *= 0.6;
+  const now = performance.now();
+  if (now - lastClank > 120) {
+    lastClank = now;
+    sfx('clank', Math.min(1, p.collR / 1.3));
   }
 }
 
@@ -1363,6 +1429,9 @@ function updateParts(dt, t) {
     p.group.children.forEach((m) => {
       if (m.userData.baseY !== undefined) m.position.y = m.userData.baseY + hopY + animY;
     });
+  });
+  parts.forEach((p) => {
+    if (p.state === 'flying' || p.state === 'detached') resolveCarCollision(p);
   });
   resolveLooseCollisions();
 }
