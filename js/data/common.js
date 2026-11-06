@@ -30,6 +30,14 @@ export const sph = (r, color, x = 0, y = 0, z = 0, o = {}) =>
 export const cone = (r, h, color, x = 0, y = 0, z = 0, o = {}) =>
   ({ g: 'cone', s: [r, h, o.seg || 16], c: color, p: [x, y, z], ...o });
 
+// 平滑放样车身：sta = [[z, 半宽, 半高, 中心高度], ...]，从后往前排列
+export const hull = (sta, color, o = {}) =>
+  ({ g: 'hull', sta, c: color, p: [0, 0, 0], s: [0, 0, 0], ...o });
+
+// 轮眉圆环（半圆），平放在车轮所在的竖直平面里
+export const arch = (R, t, color, x = 0, y = 0, z = 0, o = {}) =>
+  ({ g: 'arch', s: [R, t, 8], c: color, p: [x, y, z], r: [0, Math.PI / 2, 0], ...o });
+
 // 一只车轮：轮胎 + 胎面花纹 + 轮辋 + 辐条 + 刹车盘，轴向沿 X 轴
 export function wheelSet(radius, width, rim = 0xd8d8d8, spokes = 5) {
   const ps = [

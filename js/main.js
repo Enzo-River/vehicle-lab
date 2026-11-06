@@ -91,10 +91,11 @@ const ringMat = new THREE.MeshBasicMaterial({ color: 0x4ea8ff, transparent: true
 const matCache = new Map();
 function getMaterial(pc) {
   // 玻璃单独用更光滑、更通透的参数，看起来才像车窗
-  const metal = pc.metal !== undefined ? pc.metal : (pc.gl ? 0.15 : 0.28);
-  const rough = pc.rough !== undefined ? pc.rough : (pc.gl ? 0.08 : 0.5);
-  const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.55 : 1);
-  const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1].join('|');
+  const metal = pc.metal !== undefined ? pc.metal : (pc.gl ? 0.1 : 0.28);
+  const rough = pc.rough !== undefined ? pc.rough : (pc.gl ? 0.05 : 0.5);
+  const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.76 : 1);
+  const isHull = pc.g === 'hull';
+  const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1, isHull ? 1 : 0].join('|');
   if (matCache.has(key)) return matCache.get(key);
   // 车漆用物理材质加清漆层，反光更像真车；橡胶、玻璃不加
   const shiny = !pc.gl && rough <= 0.62;
@@ -102,14 +103,14 @@ function getMaterial(pc) {
     color: pc.c,
     metalness: metal,
     roughness: rough,
-    clearcoat: shiny ? 1 : pc.gl ? 0.7 : 0,
+    clearcoat: shiny ? 1 : pc.gl ? 0.5 : 0,
     clearcoatRoughness: shiny ? 0.1 : 0.28,
-    envMapIntensity: pc.gl ? 1.5 : 0.72,
+    envMapIntensity: pc.gl ? 0.65 : 0.72,
     transparent: !!pc.gl || opacity < 1,
     opacity,
     emissive: new THREE.Color(pc.e || 0x000000),
     emissiveIntensity: pc.ei || 1,
-    side: pc.gl ? THREE.DoubleSide : THREE.FrontSide,
+    side: pc.gl || isHull ? THREE.DoubleSide : THREE.FrontSide,
     depthWrite: pc.gl ? false : true
   });
   matCache.set(key, m);
@@ -147,11 +148,62 @@ function roundedBox(w, h, d, r) {
   return geo;
 }
 
+// 放样车身：把一串横截面平滑地连起来，做出有弧度的车壳，而不是堆方块
+// sta: [z, 半宽, 半高, 中心高度]，横截面为超椭圆并带上下内收（tumble/tuck）
+function hullGeometry(sta, pow = 3.6, tumble = 0.16, tuck = 0.12, seg = 26) {
+  const rings = sta.map(([z, a, b, cy]) => {
+    const ring = [];
+    for (let i = 0; i < seg; i++) {
+      const u = (i / seg) * Math.PI * 2;
+      const cs = Math.cos(u);
+      const sn = Math.sin(u);
+      let x = Math.sign(cs) * Math.pow(Math.abs(cs), 2 / pow) * a;
+      const y = Math.sign(sn) * Math.pow(Math.abs(sn), 2 / pow) * b;
+      const k = y / b;
+      x *= 1 - (k > 0 ? tumble * k : tuck * -k);
+      ring.push([x, cy + y, z]);
+    }
+    return ring;
+  });
+
+  const verts = [];
+  rings.forEach((r) => r.forEach((v) => verts.push(v[0], v[1], v[2])));
+  const idx = [];
+  for (let r = 0; r < rings.length - 1; r++) {
+    for (let i = 0; i < seg; i++) {
+      const i2 = (i + 1) % seg;
+      const A = r * seg + i;
+      const B = r * seg + i2;
+      const C = (r + 1) * seg + i2;
+      const D = (r + 1) * seg + i;
+      idx.push(A, B, C, A, C, D);
+    }
+  }
+  // 前后封口
+  verts.push(0, sta[0][3], sta[0][0]);
+  const c0 = verts.length / 3 - 1;
+  for (let i = 0; i < seg; i++) idx.push(c0, (i + 1) % seg, i);
+  const lastBase = (rings.length - 1) * seg;
+  verts.push(0, sta[sta.length - 1][3], sta[sta.length - 1][0]);
+  const c1 = verts.length / 3 - 1;
+  for (let i = 0; i < seg; i++) idx.push(c1, lastBase + i, lastBase + ((i + 1) % seg));
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function getGeometry(pc) {
-  const key = pc.g + ':' + pc.s.join(',');
+  const key = pc.g === 'hull'
+    ? 'hull:' + JSON.stringify([pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg])
+    : pc.g + ':' + pc.s.join(',');
   if (geoCache.has(key)) return geoCache.get(key);
   let geo;
   switch (pc.g) {
+    case 'hull': geo = hullGeometry(pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg); break;
+    case 'arch': geo = new THREE.TorusGeometry(pc.s[0], pc.s[1], 8, 20, Math.PI); break;
     case 'box': {
       const min = Math.min(pc.s[0], pc.s[1], pc.s[2]);
       const r = Math.min(0.1, min * 0.26);
