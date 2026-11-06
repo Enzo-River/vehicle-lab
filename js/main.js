@@ -270,20 +270,72 @@ function spawnDust(pos, power = 1) {
   fxList.push({ mesh, t: 0, life: 0.5 + power * 0.25, grow: 2.2 + power * 2.4, op0: 0.5 });
 }
 
+// 撞击时飞溅的小碎屑：比尘土圈更有冲击感
+// 共用同一份几何与材质，避免一堆小碎片把帧率拖垮
+const debrisGeo = new THREE.PlaneGeometry(1, 1);
+const debrisMat = new THREE.MeshBasicMaterial({
+  color: 0xd6e3f2,
+  transparent: true,
+  opacity: 0.75,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending
+});
+
+function spawnDebris(pos, power = 1) {
+  const n = 3 + Math.floor(power * 4);
+  for (let i = 0; i < n; i++) {
+    const s = 0.04 + Math.random() * 0.06;
+    const mesh = new THREE.Mesh(debrisGeo, debrisMat);
+    const a = Math.random() * Math.PI * 2;
+    const sp = (0.5 + Math.random() * 1.2) * (0.4 + power);
+    mesh.position.set(pos.x + Math.cos(a) * 0.08, 0.06 + Math.random() * 0.12, pos.z + Math.sin(a) * 0.08);
+    mesh.rotation.set(-Math.PI / 2 + (Math.random() - 0.5) * 1.4, 0, a);
+    mesh.scale.setScalar(s);
+    fxRoot.add(mesh);
+    fxList.push({
+      mesh, t: 0,
+      life: 0.4 + Math.random() * 0.32,
+      base: s,
+      shared: true,
+      vel: new THREE.Vector3(Math.cos(a) * sp, 0.8 + Math.random() * 1.1, Math.sin(a) * sp),
+      grav: -3.4,
+      spin: (Math.random() - 0.5) * 7
+    });
+  }
+}
+
 function updateFx(dt) {
   for (let i = fxList.length - 1; i >= 0; i--) {
     const e = fxList[i];
     e.t += dt;
     const k = e.t / e.life;
     if (k >= 1) {
-      e.mesh.geometry.dispose();
-      e.mesh.material.dispose();
+      if (!e.shared) {
+        e.mesh.geometry.dispose();
+        e.mesh.material.dispose();
+      }
       fxRoot.remove(e.mesh);
       fxList.splice(i, 1);
       continue;
     }
-    e.mesh.scale.setScalar(1 + k * e.grow);
-    e.mesh.material.opacity = e.op0 * (1 - k) * (1 - k);
+    if (e.shared) {
+      // 碎屑靠缩小消失，共用材质不能单独改透明度
+      e.mesh.scale.setScalar(e.base * (1 - k * 0.75));
+    } else {
+      e.mesh.scale.setScalar(1 + k * e.grow);
+      e.mesh.material.opacity = e.op0 * (1 - k) * (1 - k);
+    }
+    // 碎屑：按自己的速度飞出去、受重力下落，落到地上就停住
+    if (e.vel) {
+      e.vel.y += e.grav * dt;
+      e.mesh.position.addScaledVector(e.vel, dt);
+      e.mesh.rotation.z += e.spin * dt;
+      if (e.mesh.position.y < 0.02) {
+        e.mesh.position.y = 0.02;
+        e.vel.set(0, 0, 0);
+      }
+    }
   }
 }
 
@@ -345,7 +397,14 @@ function buildVehicle(def) {
       squash: 0,
       bounces: 0,
       collR: 0.3,
-      slot: new THREE.Vector3()
+      slot: new THREE.Vector3(),
+      // 翻滚与落地姿态：空中三轴翻转，落地后歪一点；轮子会倒下躺平
+      tumble: new THREE.Vector3(),
+      tilt: new THREE.Vector3(),
+      tipK: 0,
+      tipDir: 0,
+      sizeY: 0,
+      minDim: 0
     };
     group.userData.part = part;
     parts.push(part);
@@ -361,6 +420,8 @@ function buildVehicle(def) {
     const center = bb.getCenter(new THREE.Vector3());
     // 散落时贴地摆放：把零件最低点落到地面高度
     p.restY = 0.03 - (bb.min.y - p.home.y);
+    p.sizeY = size.y;
+    p.minDim = Math.min(size.x, size.y, size.z);
     p.foot = Math.max(size.x, size.z);
     // 落地时用来做零件之间的圆盘碰撞，长条零件取短边避免互相推得太远
     p.collR = Math.max(0.22, Math.min(1.3, Math.min(size.x, size.z) * 0.55 + 0.12));
@@ -435,6 +496,8 @@ function updateScatter() {
     p.group.rotation.set(0, 0, 0);
     p.vel.set(0, 0, 0);
     p.spin = 0;
+    p.tumble.set(0, 0, 0);
+    p.tipK = 0;
     p.target.copy(p.group.position);
   });
 }
@@ -747,11 +810,13 @@ const SFX = {
     tone(1250, 0.05, { gain: 0.04, at: 0.01 });
   },
   error() { tone(320, 0.12, { to: 210, gain: 0.05 }); tone(210, 0.18, { to: 140, gain: 0.05, at: 0.11 }); },
-  // 零件落地：低沉的闷响 + 金属碰撞的碎响
-  thud() {
-    tone(96, 0.16, { to: 52, type: 'sine', gain: 0.07 });
-    noise(0.11, { freq: 620, gain: 0.06, q: 0.8 });
-    tone(1900, 0.04, { gain: 0.025, at: 0.012 });
+  // 零件落地：低沉的闷响 + 金属碰撞的碎响，零件越大声音越低沉
+  thud(weight = 0.5) {
+    const w = Math.max(0, Math.min(1, weight));
+    const f = 118 - w * 46;
+    tone(f, 0.17, { to: f * 0.52, type: 'sine', gain: 0.055 + w * 0.035 });
+    noise(0.12, { freq: 740 - w * 260, gain: 0.045 + w * 0.035, q: 0.8 });
+    tone(1920 - w * 640, 0.04, { gain: 0.022, at: 0.012 });
   },
   mode() { tone(520, 0.07, { gain: 0.06 }); tone(780, 0.1, { gain: 0.06, at: 0.08 }); },
   select() { tone(180, 0.45, { to: 90, type: 'sawtooth', gain: 0.04 }); noise(0.28, { freq: 520, gain: 0.03 }); },
@@ -761,9 +826,9 @@ const SFX = {
   }
 };
 
-function sfx(type) {
+function sfx(type, arg) {
   if (!soundOn) return;
-  try { (SFX[type] || SFX.pop)(); } catch (e) { /* 忽略音频错误 */ }
+  try { (SFX[type] || SFX.pop)(arg); } catch (e) { /* 忽略音频错误 */ }
 }
 
 // 演示模式下的低频发动机轰鸣（持续音）
@@ -894,6 +959,8 @@ function onPointerUp() {
       p.state = 'flying';
       p.vel.set(0, 0, 0);
       p.spin = 0;
+      p.tumble.set(0, 0, 0);
+      p.tipK = 0;
       p.bounces = 0;
       p.target.set(p.group.position.x, p.restY, p.group.position.z);
       sfx('pop');
@@ -1052,6 +1119,8 @@ function attachAll(instant) {
     p.vel.set(0, 0, 0);
     p.spin = 0;
     p.squash = 0;
+    p.tumble.set(0, 0, 0);
+    p.tipK = 0;
     if (p.marker) p.marker.visible = false;
     if (instant) {
       p.group.position.copy(p.home);
@@ -1081,18 +1150,30 @@ function launchToSlot(p) {
   p.squash = 0;
   // 空中带一点旋转，落地后慢慢停住
   p.spin = (Math.random() - 0.5) * 5;
+  // 轮子绕自己的轴滚着飞出去，其他零件在空中三轴翻滚
+  if (p.def.spin === 'x') {
+    p.tumble.set(5 + Math.random() * 6, 0, 0);
+  } else {
+    p.tumble.set((Math.random() - 0.5) * 7, 0, (Math.random() - 0.5) * 7);
+  }
+  // 落地后停下来的姿态：稍微歪一点，像随手扔在地上
+  p.tilt.set((Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1);
+  p.tipK = 0;
+  p.tipDir = Math.random() < 0.5 ? -1 : 1;
   p.target.copy(p.slot);
 }
 
 let lastThud = 0;
 function partImpact(p, speed) {
   const power = Math.min(1, speed / 3.2);
+  const weight = Math.min(1, p.collR / 1.3);
   spawnDust(p.group.position, power);
+  spawnDebris(p.group.position, power);
   p.squash = Math.max(p.squash, 0.3 + power * 0.5);
   const now = performance.now();
   if (now - lastThud > 100) {
     lastThud = now;
-    sfx('thud');
+    sfx('thud', weight);
   }
 }
 
@@ -1100,7 +1181,11 @@ function stepFlying(p, dt) {
   p.vel.y -= GRAV * dt;
   p.group.position.addScaledVector(p.vel, dt);
   p.group.rotation.y += p.spin * dt;
+  p.group.rotation.x += p.tumble.x * dt;
+  p.group.rotation.z += p.tumble.z * dt;
   p.spin *= Math.exp(-dt * 1.4);
+  p.tumble.x *= Math.exp(-dt * 0.7);
+  p.tumble.z *= Math.exp(-dt * 0.7);
   if (p.group.position.y <= p.restY) {
     p.group.position.y = p.restY;
     const hit = -p.vel.y;
@@ -1110,10 +1195,13 @@ function stepFlying(p, dt) {
       p.vel.y = hit * 0.34;
       p.vel.x *= 0.68;
       p.vel.z *= 0.68;
+      p.spin *= 0.6;
+      p.tumble.multiplyScalar(0.45);
       partImpact(p, hit);
     } else {
       p.vel.set(0, 0, 0);
       p.spin = 0;
+      p.tumble.set(0, 0, 0);
       p.state = 'detached';
       p.target.copy(p.group.position);
       if (p.bounces === 0) partImpact(p, Math.max(0.5, hit));
@@ -1129,8 +1217,8 @@ function resolveLooseCollisions() {
     for (let j = i + 1; j < loose.length; j++) {
       const a = loose[i];
       const b = loose[j];
-      if (Math.abs(a.group.position.y - a.restY) > 0.3) continue;
-      if (Math.abs(b.group.position.y - b.restY) > 0.3) continue;
+      if (Math.abs(a.group.position.y - a.restY) > 0.45) continue;
+      if (Math.abs(b.group.position.y - b.restY) > 0.45) continue;
       const dx = b.group.position.x - a.group.position.x;
       const dz = b.group.position.z - a.group.position.z;
       const min = a.collR + b.collR;
@@ -1177,7 +1265,28 @@ function updateParts(dt, t) {
         p.vel.set(0, 0, 0);
         p.spin = 0;
       }
+
+      // 落地后的姿态：轮子像真轮胎一样侧倒躺平，其他零件歪一点点
+      if (p.def.spin === 'x') {
+        if (p.tipK < 1) {
+          p.tipK = Math.min(1, p.tipK + dt * 4.5);
+          const k = p.tipK * p.tipK;
+          p.group.rotation.z = p.tipDir * k * Math.PI / 2;
+          p.group.rotation.x += (0 - p.group.rotation.x) * (1 - Math.exp(-dt * 9));
+          p.group.position.y = p.restY - (p.sizeY / 2 - p.minDim / 2) * k;
+        }
+      } else {
+        p.group.rotation.x += (p.tilt.x - p.group.rotation.x) * (1 - Math.exp(-dt * 9));
+        p.group.rotation.z += (p.tilt.z - p.group.rotation.z) * (1 - Math.exp(-dt * 9));
+        // 歪了会把一角压进地面，抬一点回来
+        p.group.position.y = p.restY + (Math.abs(p.tilt.x) + Math.abs(p.tilt.z)) * p.foot * 0.45;
+      }
     } else if (p.state === 'returning' && !(rigActive && p.rigParent)) {
+      // 躺平的轮子先立起来，再飞回去
+      if (p.tipK > 0) {
+        p.tipK = Math.max(0, p.tipK - dt * 6);
+        p.group.rotation.z = p.tipDir * (p.tipK * p.tipK) * Math.PI / 2;
+      }
       p.group.position.lerp(p.target, 1 - Math.exp(-dt * 8.5));
       if (p.group.position.distanceTo(p.target) < 0.2) {
         p.group.position.copy(p.target);
