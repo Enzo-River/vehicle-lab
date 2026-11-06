@@ -1,6 +1,6 @@
 // 通用颜色与几何零件小工具（纯数据，不依赖 three.js）
 export const C = {
-  glass: 0x2f5673,
+  glass: 0x1d3140,
   rubber: 0x1c1c1c,
   dark: 0x24262b,
   steel: 0x9aa4ad,
@@ -30,18 +30,48 @@ export const sph = (r, color, x = 0, y = 0, z = 0, o = {}) =>
 export const cone = (r, h, color, x = 0, y = 0, z = 0, o = {}) =>
   ({ g: 'cone', s: [r, h, o.seg || 16], c: color, p: [x, y, z], ...o });
 
-// 一只车轮：轮胎 + 轮辋 + 辐条，轴向沿 X 轴
+// 一只车轮：轮胎 + 胎面花纹 + 轮辋 + 辐条 + 刹车盘，轴向沿 X 轴
 export function wheelSet(radius, width, rim = 0xd8d8d8, spokes = 5) {
   const ps = [
-    cyl(radius, radius, width, 0x1c1c1c, 0, 0, 0, { r: [0, 0, Math.PI / 2], seg: 22, rough: 0.9, metal: 0.1 }),
-    cyl(radius * 0.62, radius * 0.62, width * 1.04, rim, 0, 0, 0, { r: [0, 0, Math.PI / 2], seg: 18, rough: 0.35, metal: 0.5 })
+    // 轮胎主体（橡胶，粗糙不反光）
+    cyl(radius, radius, width, 0x161616, 0, 0, 0, { r: [0, 0, Math.PI / 2], seg: 32, rough: 0.96, metal: 0.02 }),
+    // 两侧胎肩的圆角
+    tor(radius - 0.026, 0.028, 0x1b1b1b, width / 2 - 0.012, 0, 0, { r: [0, Math.PI / 2, 0], rough: 0.9, metal: 0.02 }),
+    tor(radius - 0.026, 0.028, 0x1b1b1b, -width / 2 + 0.012, 0, 0, { r: [0, Math.PI / 2, 0], rough: 0.9, metal: 0.02 }),
+    // 胎面花纹块
+    ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((i) => {
+      const a = (i / 16) * Math.PI * 2;
+      return box(width * 0.9, 0.028, 0.06, 0x101010, 0, Math.cos(a) * radius, Math.sin(a) * radius, {
+        r: [a, 0, 0], rough: 1, metal: 0
+      });
+    }),
   ];
-  for (let i = 0; i < spokes; i++) {
-    ps.push(box(width * 1.06, radius * 1.08, 0.05, rim, 0, 0, 0, {
-      r: [i * Math.PI / spokes, 0, 0], metal: 0.45, rough: 0.4
+  // 轮胎两侧都是实心端面，轮辋必须贴在最外侧才能看见
+  [-1, 1].forEach((side) => {
+    const xFace = side * (width / 2 + 0.012);
+    // 深色轮辋底板（辐条之间的空隙就是它）
+    ps.push(cyl(radius * 0.58, radius * 0.58, 0.024, 0x0d0e10, xFace, 0, 0, {
+      r: [0, 0, Math.PI / 2], seg: 30, rough: 0.95, metal: 0
     }));
-  }
-  ps.push(cyl(radius * 0.17, radius * 0.17, width * 1.12, 0x333333, 0, 0, 0, { r: [0, 0, Math.PI / 2], seg: 10 }));
+    // 轮辋外圈亮边
+    ps.push(tor(radius * 0.585, 0.02, rim, xFace + side * 0.012, 0, 0, {
+      r: [0, Math.PI / 2, 0], rough: 0.18, metal: 0.75
+    }));
+    // 辐条呈放射状，辐条之间能看到深色底板，才有铝合金轮圈的样子
+    for (let i = 0; i < spokes; i++) {
+      const a = (i / spokes) * Math.PI * 2;
+      ps.push(box(0.045, radius * 0.5, 0.06, rim,
+        xFace + side * 0.016, Math.cos(a) * radius * 0.34, Math.sin(a) * radius * 0.34,
+        { r: [a, 0, 0], metal: 0.62, rough: 0.24 }));
+    }
+    // 中心轮毂 + 轮毂盖
+    ps.push(cyl(radius * 0.2, radius * 0.2, 0.05, 0x9aa4ad, xFace + side * 0.02, 0, 0, {
+      r: [0, 0, Math.PI / 2], seg: 22, metal: 0.6, rough: 0.3
+    }));
+    ps.push(cyl(radius * 0.095, radius * 0.095, 0.06, 0x24262b, xFace + side * 0.024, 0, 0, {
+      r: [0, 0, Math.PI / 2], seg: 18, metal: 0.4, rough: 0.4
+    }));
+  });
   return ps;
 }
 

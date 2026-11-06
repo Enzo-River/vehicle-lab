@@ -11,7 +11,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 0.92;
 renderer.domElement.style.display = 'block';
 renderer.domElement.style.touchAction = 'none';
 stage.appendChild(renderer.domElement);
@@ -31,10 +31,10 @@ controls.enablePan = false;
 controls.autoRotateSpeed = 0.6;
 
 /* 灯光 */
-scene.add(new THREE.HemisphereLight(0xdfeaff, 0x2b3a52, 0.95));
-scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+scene.add(new THREE.HemisphereLight(0xdfeaff, 0x2b3a52, 0.55));
+scene.add(new THREE.AmbientLight(0xffffff, 0.08));
 
-const sun = new THREE.DirectionalLight(0xffffff, 2.4);
+const sun = new THREE.DirectionalLight(0xfff6e8, 2.9);
 sun.position.set(9, 14, 8);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -48,7 +48,7 @@ sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.02;
 scene.add(sun);
 
-const rim = new THREE.DirectionalLight(0x88bbff, 1.0);
+const rim = new THREE.DirectionalLight(0x88bbff, 0.7);
 rim.position.set(-8, 6, -10);
 scene.add(rim);
 
@@ -91,15 +91,20 @@ const ringMat = new THREE.MeshBasicMaterial({ color: 0x4ea8ff, transparent: true
 const matCache = new Map();
 function getMaterial(pc) {
   // 玻璃单独用更光滑、更通透的参数，看起来才像车窗
-  const metal = pc.metal !== undefined ? pc.metal : (pc.gl ? 0.15 : 0.2);
-  const rough = pc.rough !== undefined ? pc.rough : (pc.gl ? 0.12 : 0.55);
-  const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.34 : 1);
+  const metal = pc.metal !== undefined ? pc.metal : (pc.gl ? 0.15 : 0.28);
+  const rough = pc.rough !== undefined ? pc.rough : (pc.gl ? 0.08 : 0.5);
+  const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.55 : 1);
   const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1].join('|');
   if (matCache.has(key)) return matCache.get(key);
-  const m = new THREE.MeshStandardMaterial({
+  // 车漆用物理材质加清漆层，反光更像真车；橡胶、玻璃不加
+  const shiny = !pc.gl && rough <= 0.62;
+  const m = new THREE.MeshPhysicalMaterial({
     color: pc.c,
     metalness: metal,
     roughness: rough,
+    clearcoat: shiny ? 1 : pc.gl ? 0.7 : 0,
+    clearcoatRoughness: shiny ? 0.1 : 0.28,
+    envMapIntensity: pc.gl ? 1.5 : 0.72,
     transparent: !!pc.gl || opacity < 1,
     opacity,
     emissive: new THREE.Color(pc.e || 0x000000),
@@ -112,16 +117,51 @@ function getMaterial(pc) {
 }
 
 const geoCache = new Map();
+
+// 圆角方块：把方盒的棱角收圆，车身就不会像纸盒
+function roundedBox(w, h, d, r) {
+  const seg = 3;
+  const geo = new THREE.BoxGeometry(w, h, d, seg, seg, seg);
+  const pos = geo.attributes.position;
+  const inner = new THREE.Vector3(
+    Math.max(0.001, w / 2 - r),
+    Math.max(0.001, h / 2 - r),
+    Math.max(0.001, d / 2 - r)
+  );
+  const v = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const dir = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    c.set(
+      Math.max(-inner.x, Math.min(inner.x, v.x)),
+      Math.max(-inner.y, Math.min(inner.y, v.y)),
+      Math.max(-inner.z, Math.min(inner.z, v.z))
+    );
+    dir.copy(v).sub(c);
+    if (dir.lengthSq() < 1e-8) continue;
+    dir.normalize();
+    pos.setXYZ(i, c.x + dir.x * r, c.y + dir.y * r, c.z + dir.z * r);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function getGeometry(pc) {
   const key = pc.g + ':' + pc.s.join(',');
   if (geoCache.has(key)) return geoCache.get(key);
   let geo;
   switch (pc.g) {
-    case 'box': geo = new THREE.BoxGeometry(pc.s[0], pc.s[1], pc.s[2]); break;
-    case 'cyl': geo = new THREE.CylinderGeometry(pc.s[0], pc.s[1], pc.s[2], pc.s[3]); break;
-    case 'sphere': geo = new THREE.SphereGeometry(pc.s[0], 20, 16); break;
+    case 'box': {
+      const min = Math.min(pc.s[0], pc.s[1], pc.s[2]);
+      const r = Math.min(0.1, min * 0.26);
+      geo = r > 0.004 ? roundedBox(pc.s[0], pc.s[1], pc.s[2], r) : new THREE.BoxGeometry(pc.s[0], pc.s[1], pc.s[2]);
+      break;
+    }
+    case 'cyl': geo = new THREE.CylinderGeometry(pc.s[0], pc.s[1], pc.s[2], Math.max(20, pc.s[3])); break;
+    case 'sphere': geo = new THREE.SphereGeometry(pc.s[0], 24, 18); break;
     case 'torus': geo = new THREE.TorusGeometry(pc.s[0], pc.s[1], pc.s[2], pc.s[3]); break;
-    case 'cone': geo = new THREE.ConeGeometry(pc.s[0], pc.s[1], pc.s[2]); break;
+    case 'cone': geo = new THREE.ConeGeometry(pc.s[0], pc.s[1], Math.max(20, pc.s[2])); break;
     default: geo = new THREE.BoxGeometry(1, 1, 1);
   }
   geoCache.set(key, geo);
@@ -926,7 +966,7 @@ function updateParts(dt, t) {
     // 被机械臂挂接的零件用的是相对坐标，不能再自己飞回原位
     if (p.state !== 'dragging' && !(rigActive && p.rigParent)) {
       p.group.position.lerp(p.target, 1 - Math.exp(-dt * 8.5));
-      if (p.state === 'returning' && p.group.position.distanceTo(p.target) < 0.05) {
+      if (p.state === 'returning' && p.group.position.distanceTo(p.target) < 0.12) {
         p.group.position.copy(p.target);
         p.state = 'placed';
         refreshProgress();
