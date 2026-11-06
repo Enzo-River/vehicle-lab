@@ -30,6 +30,9 @@ controls.target.set(0, 1, 0);
 controls.enablePan = false;
 controls.autoRotateSpeed = 0.6;
 
+// 重零件砸地时的轻微镜头震动
+let camShake = 0;
+
 /* 灯光 */
 scene.add(new THREE.HemisphereLight(0xdfeaff, 0x2b3a52, 0.55));
 scene.add(new THREE.AmbientLight(0xffffff, 0.08));
@@ -818,6 +821,12 @@ const SFX = {
     noise(0.12, { freq: 740 - w * 260, gain: 0.045 + w * 0.035, q: 0.8 });
     tone(1920 - w * 640, 0.04, { gain: 0.022, at: 0.012 });
   },
+  // 零件互相撞在一起：清脆一点的金属声，小零件音调更高
+  clank(weight = 0.5) {
+    const w = Math.max(0, Math.min(1, weight));
+    tone(330 + w * 150, 0.055, { to: 220 + w * 120, type: 'square', gain: 0.035 });
+    noise(0.06, { freq: 1700 - w * 600, gain: 0.028, q: 1.1 });
+  },
   mode() { tone(520, 0.07, { gain: 0.06 }); tone(780, 0.1, { gain: 0.06, at: 0.08 }); },
   select() { tone(180, 0.45, { to: 90, type: 'sawtooth', gain: 0.04 }); noise(0.28, { freq: 520, gain: 0.03 }); },
   win() {
@@ -1139,12 +1148,16 @@ function launchToSlot(p) {
   const sx = p.group.position.x;
   const sy = p.group.position.y;
   const sz = p.group.position.z;
-  const dx = p.slot.x - sx;
-  const dz = p.slot.z - sz;
+  // 每次落点带一点随机偏移，零件不会每次都排成整齐的一圈
+  const tx = p.slot.x + (Math.random() - 0.5) * 0.55;
+  const tz = p.slot.z + (Math.random() - 0.5) * 0.55;
+  const dx = tx - sx;
+  const dz = tz - sz;
   const dist = Math.hypot(dx, dz);
   const T = 0.62 + Math.min(0.5, dist * 0.05);
   const dy = p.restY - sy;
   p.vel.set(dx / T, (dy + 0.5 * GRAV * T * T) / T, dz / T);
+  p.target.set(tx, p.restY, tz);
   p.state = 'flying';
   p.bounces = 0;
   p.squash = 0;
@@ -1157,19 +1170,20 @@ function launchToSlot(p) {
     p.tumble.set((Math.random() - 0.5) * 7, 0, (Math.random() - 0.5) * 7);
   }
   // 落地后停下来的姿态：稍微歪一点，像随手扔在地上
-  p.tilt.set((Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1);
+  p.tilt.set((Math.random() - 0.5) * 0.1, 0, (Math.random() - 0.5) * 0.1);
   p.tipK = 0;
   p.tipDir = Math.random() < 0.5 ? -1 : 1;
-  p.target.copy(p.slot);
 }
 
 let lastThud = 0;
+let lastClank = 0;
 function partImpact(p, speed) {
   const power = Math.min(1, speed / 3.2);
   const weight = Math.min(1, p.collR / 1.3);
   spawnDust(p.group.position, power);
   spawnDebris(p.group.position, power);
   p.squash = Math.max(p.squash, 0.3 + power * 0.5);
+  camShake = Math.max(camShake, (0.018 + power * 0.055) * (0.35 + weight * 0.65));
   const now = performance.now();
   if (now - lastThud > 100) {
     lastThud = now;
@@ -1239,6 +1253,14 @@ function resolveLooseCollisions() {
         a.vel.z -= nz * imp;
         b.vel.x += nx * imp;
         b.vel.z += nz * imp;
+        // 撞得够狠才响，避免零件抖动时一直叮叮当当
+        if (-rel > 0.8) {
+          const now = performance.now();
+          if (now - lastClank > 160) {
+            lastClank = now;
+            sfx('clank', Math.min(1, Math.min(a.collR, b.collR) / 1.3));
+          }
+        }
       }
     }
   }
@@ -1367,6 +1389,14 @@ function animate() {
   }
 
   controls.update();
+  if (camShake > 0.0006) {
+    camera.position.x += (Math.random() - 0.5) * camShake;
+    camera.position.y += (Math.random() - 0.5) * camShake * 0.7;
+    camera.position.z += (Math.random() - 0.5) * camShake;
+    camShake *= Math.exp(-dt * 8);
+  } else {
+    camShake = 0;
+  }
   renderer.render(scene, camera);
 }
 
