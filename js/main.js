@@ -248,7 +248,26 @@ function spawnRing(pos, color = 0x6ee7ff) {
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(pos.x, 0.03, pos.z);
   fxRoot.add(mesh);
-  fxList.push({ mesh, t: 0, life: 0.62 });
+  fxList.push({ mesh, t: 0, life: 0.62, grow: 3.6, op0: 0.9 });
+}
+
+// 零件砸到地面时扬起的一圈尘土
+function spawnDust(pos, power = 1) {
+  const mesh = new THREE.Mesh(
+    new THREE.RingGeometry(0.1, 0.22, 28),
+    new THREE.MeshBasicMaterial({
+      color: 0xa9bdd6,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    })
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(pos.x, 0.035, pos.z);
+  fxRoot.add(mesh);
+  fxList.push({ mesh, t: 0, life: 0.5 + power * 0.25, grow: 2.2 + power * 2.4, op0: 0.5 });
 }
 
 function updateFx(dt) {
@@ -263,8 +282,8 @@ function updateFx(dt) {
       fxList.splice(i, 1);
       continue;
     }
-    e.mesh.scale.setScalar(1 + k * 3.6);
-    e.mesh.material.opacity = 0.9 * (1 - k) * (1 - k);
+    e.mesh.scale.setScalar(1 + k * e.grow);
+    e.mesh.material.opacity = e.op0 * (1 - k) * (1 - k);
   }
 }
 
@@ -319,7 +338,14 @@ function buildVehicle(def) {
       marker: null,
       hop: 0,
       pop: 0,
-      rigParent: null
+      rigParent: null,
+      // 物理状态：拆下的零件会受重力、落在地面弹跳，并与其他零件碰撞
+      vel: new THREE.Vector3(),
+      spin: 0,
+      squash: 0,
+      bounces: 0,
+      collR: 0.3,
+      slot: new THREE.Vector3()
     };
     group.userData.part = part;
     parts.push(part);
@@ -336,6 +362,8 @@ function buildVehicle(def) {
     // 散落时贴地摆放：把零件最低点落到地面高度
     p.restY = 0.03 - (bb.min.y - p.home.y);
     p.foot = Math.max(size.x, size.z);
+    // 落地时用来做零件之间的圆盘碰撞，长条零件取短边避免互相推得太远
+    p.collR = Math.max(0.22, Math.min(1.3, Math.min(size.x, size.z) * 0.55 + 0.12));
     const boxGeo = new THREE.BoxGeometry(
       Math.max(size.x, 0.3) + 0.05,
       Math.max(size.y, 0.3) + 0.05,
@@ -366,6 +394,7 @@ function buildVehicle(def) {
   baseMaxDim = Math.max(vsize.x, vsize.y, vsize.z, 3.2);
   baseCenterY = vbb.getCenter(new THREE.Vector3()).y;
   scatterRadius = Math.min(5.6, Math.max(4.4, baseMaxDim * 0.9));
+  assignSlots();
 }
 
 let camZoom = 1;
@@ -389,18 +418,23 @@ function fitCamera(zoom = 1) {
 // 相机所在的方位角：零件散落时以它为基准，从车后方开始摆
 const CAM_AZIMUTH = Math.atan2(0.92, 0.66);
 
-function updateScatter() {
-  // 大零件摆到车后方，小零件才允许靠近镜头一侧，避免挡住视线
+// 每个零件在地面上固定的落点：大零件摆到车后方，小零件才允许靠近镜头一侧
+function assignSlots() {
   const sorted = parts.slice().sort((a, b) => b.foot - a.foot);
-  const n = sorted.length;
+  const n = sorted.length || 1;
   sorted.forEach((p, i) => {
     const angle = CAM_AZIMUTH + Math.PI / 2 + (i / n) * Math.PI * 2 + (i % 2 ? 0.05 : -0.05);
     const r = scatterRadius + (i % 3) * 0.34 + (p.foot > 2.2 ? 0.4 : 0);
-    p.group.position.set(
-      Math.cos(angle) * r,
-      p.restY,
-      Math.sin(angle) * r
-    );
+    p.slot.set(Math.cos(angle) * r, p.restY, Math.sin(angle) * r);
+  });
+}
+
+function updateScatter() {
+  parts.forEach((p) => {
+    p.group.position.copy(p.slot);
+    p.group.rotation.set(0, 0, 0);
+    p.vel.set(0, 0, 0);
+    p.spin = 0;
     p.target.copy(p.group.position);
   });
 }
@@ -713,6 +747,12 @@ const SFX = {
     tone(1250, 0.05, { gain: 0.04, at: 0.01 });
   },
   error() { tone(320, 0.12, { to: 210, gain: 0.05 }); tone(210, 0.18, { to: 140, gain: 0.05, at: 0.11 }); },
+  // 零件落地：低沉的闷响 + 金属碰撞的碎响
+  thud() {
+    tone(96, 0.16, { to: 52, type: 'sine', gain: 0.07 });
+    noise(0.11, { freq: 620, gain: 0.06, q: 0.8 });
+    tone(1900, 0.04, { gain: 0.025, at: 0.012 });
+  },
   mode() { tone(520, 0.07, { gain: 0.06 }); tone(780, 0.1, { gain: 0.06, at: 0.08 }); },
   select() { tone(180, 0.45, { to: 90, type: 'sawtooth', gain: 0.04 }); noise(0.28, { freq: 520, gain: 0.03 }); },
   win() {
@@ -850,7 +890,11 @@ function onPointerUp() {
     if (p.group.position.distanceTo(p.home) < 1.05 || screenDist < 60) {
       placePart(p);
     } else {
-      p.state = 'detached';
+      // 松手时零件顺着重力落到地面
+      p.state = 'flying';
+      p.vel.set(0, 0, 0);
+      p.spin = 0;
+      p.bounces = 0;
       p.target.set(p.group.position.x, p.restY, p.group.position.z);
       sfx('pop');
       hint('再靠近一点点就能装好啦～');
@@ -867,9 +911,7 @@ function handleClick(part) {
   showCard(part);
   if (mode === 'explore') {
     if (part.state === 'placed') {
-      part.state = 'detached';
-      part.target.copy(part.home).add(part.offset);
-      part.hop = 0.001;
+      launchToSlot(part);
       sfx('detach');
     } else {
       part.state = 'returning';
@@ -892,6 +934,9 @@ function handleClick(part) {
 function placePart(part) {
   part.state = 'returning';
   part.target.copy(part.home);
+  part.vel.set(0, 0, 0);
+  part.spin = 0;
+  part.squash = 0;
   if (part.marker) part.marker.visible = false;
   part.pop = 1;
   spawnRing(part.home);
@@ -984,11 +1029,16 @@ function explodeAll() {
     return;
   }
   if (mode === 'demo') setMode('explore', true);
+  // 一颗一颗弹出去，落到地上还会弹两下
+  let launched = false;
   parts.forEach((p, i) => {
-    p.state = 'detached';
-    p.target.copy(p.home).add(p.offset);
-    setTimeout(() => { p.hop = 0.001; }, i * 55);
+    if (p.state === 'placed') {
+      launched = true;
+      setTimeout(() => launchToSlot(p), i * 45);
+    }
   });
+  // 零件会散落一地，镜头拉远一点才能看全
+  if (launched) fitCamera(1.45);
   refreshProgress();
   sfx('detach');
   hint('所有零件都拆下来啦，点零件看它的本领～');
@@ -999,30 +1049,145 @@ function attachAll(instant) {
     p.state = 'returning';
     p.target.copy(p.home);
     p.hop = 0;
+    p.vel.set(0, 0, 0);
+    p.spin = 0;
+    p.squash = 0;
     if (p.marker) p.marker.visible = false;
     if (instant) {
       p.group.position.copy(p.home);
+      p.group.rotation.set(0, 0, 0);
       p.state = 'placed';
     }
   });
-  if (instant) {
-    parts.forEach((p) => p.group.rotation.set(0, 0, 0));
-  }
   refreshProgress();
+}
+
+/* ---------------- 零件掉落物理 ---------------- */
+const GRAV = 13;
+
+// 把零件从车上"弹"下来，沿抛物线飞到它在地面的固定位置
+function launchToSlot(p) {
+  const sx = p.group.position.x;
+  const sy = p.group.position.y;
+  const sz = p.group.position.z;
+  const dx = p.slot.x - sx;
+  const dz = p.slot.z - sz;
+  const dist = Math.hypot(dx, dz);
+  const T = 0.62 + Math.min(0.5, dist * 0.05);
+  const dy = p.restY - sy;
+  p.vel.set(dx / T, (dy + 0.5 * GRAV * T * T) / T, dz / T);
+  p.state = 'flying';
+  p.bounces = 0;
+  p.squash = 0;
+  // 空中带一点旋转，落地后慢慢停住
+  p.spin = (Math.random() - 0.5) * 5;
+  p.target.copy(p.slot);
+}
+
+let lastThud = 0;
+function partImpact(p, speed) {
+  const power = Math.min(1, speed / 3.2);
+  spawnDust(p.group.position, power);
+  p.squash = Math.max(p.squash, 0.3 + power * 0.5);
+  const now = performance.now();
+  if (now - lastThud > 100) {
+    lastThud = now;
+    sfx('thud');
+  }
+}
+
+function stepFlying(p, dt) {
+  p.vel.y -= GRAV * dt;
+  p.group.position.addScaledVector(p.vel, dt);
+  p.group.rotation.y += p.spin * dt;
+  p.spin *= Math.exp(-dt * 1.4);
+  if (p.group.position.y <= p.restY) {
+    p.group.position.y = p.restY;
+    const hit = -p.vel.y;
+    if (hit > 1.0 && p.bounces < 2) {
+      // 落地弹跳，一次比一次矮
+      p.bounces += 1;
+      p.vel.y = hit * 0.34;
+      p.vel.x *= 0.68;
+      p.vel.z *= 0.68;
+      partImpact(p, hit);
+    } else {
+      p.vel.set(0, 0, 0);
+      p.spin = 0;
+      p.state = 'detached';
+      p.target.copy(p.group.position);
+      if (p.bounces === 0) partImpact(p, Math.max(0.5, hit));
+      refreshProgress();
+    }
+  }
+}
+
+// 地面上的零件互相当成圆盘碰撞：不会叠在一起，被撞的会被推开
+function resolveLooseCollisions() {
+  const loose = parts.filter((p) => p.state === 'detached' || p.state === 'flying');
+  for (let i = 0; i < loose.length; i++) {
+    for (let j = i + 1; j < loose.length; j++) {
+      const a = loose[i];
+      const b = loose[j];
+      if (Math.abs(a.group.position.y - a.restY) > 0.3) continue;
+      if (Math.abs(b.group.position.y - b.restY) > 0.3) continue;
+      const dx = b.group.position.x - a.group.position.x;
+      const dz = b.group.position.z - a.group.position.z;
+      const min = a.collR + b.collR;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > min * min || d2 < 1e-6) continue;
+      const d = Math.sqrt(d2);
+      const nx = dx / d;
+      const nz = dz / d;
+      const push = (min - d) * 0.5;
+      a.group.position.x -= nx * push;
+      a.group.position.z -= nz * push;
+      b.group.position.x += nx * push;
+      b.group.position.z += nz * push;
+      const rel = (b.vel.x - a.vel.x) * nx + (b.vel.z - a.vel.z) * nz;
+      if (rel < 0) {
+        const imp = -rel * 0.5;
+        a.vel.x -= nx * imp;
+        a.vel.z -= nz * imp;
+        b.vel.x += nx * imp;
+        b.vel.z += nz * imp;
+      }
+    }
+  }
 }
 
 /* ---------------- 逐帧更新 ---------------- */
 function updateParts(dt, t) {
   const rigged = !!RIGS[currentVehicle.id];
   parts.forEach((p) => {
-    // 被机械臂挂接的零件用的是相对坐标，不能再自己飞回原位
-    if (p.state !== 'dragging' && !(rigActive && p.rigParent)) {
+    if (p.state === 'flying') {
+      stepFlying(p, dt);
+    } else if (p.state === 'detached') {
+      // 被撞开的零件会在地面上滑一小段再停下
+      const sp = Math.hypot(p.vel.x, p.vel.z);
+      if (sp > 0.02) {
+        p.group.position.x += p.vel.x * dt;
+        p.group.position.z += p.vel.z * dt;
+        const damp = Math.exp(-dt * 6);
+        p.vel.x *= damp;
+        p.vel.z *= damp;
+        p.group.rotation.y += p.spin * dt;
+        p.spin *= Math.exp(-dt * 4);
+      } else if (sp > 0) {
+        p.vel.set(0, 0, 0);
+        p.spin = 0;
+      }
+    } else if (p.state === 'returning' && !(rigActive && p.rigParent)) {
       p.group.position.lerp(p.target, 1 - Math.exp(-dt * 8.5));
-      if (p.state === 'returning' && p.group.position.distanceTo(p.target) < 0.12) {
+      if (p.group.position.distanceTo(p.target) < 0.2) {
         p.group.position.copy(p.target);
+        p.group.rotation.set(0, 0, 0);
         p.state = 'placed';
         refreshProgress();
         if (mode === 'assemble' && parts.every((q) => q.state === 'placed')) checkWin();
+        else if (mode === 'explore' && camZoom > 1.05 && parts.every((q) => q.state === 'placed')) {
+          fitCamera(1);
+        }
       }
     }
 
@@ -1030,10 +1195,12 @@ function updateParts(dt, t) {
     if (p.hop > 0 && p.hop < 1) p.hop = Math.min(1, p.hop + dt / 0.55);
     const hopY = p.hop > 0 && p.hop < 1 ? Math.sin(p.hop * Math.PI) * 0.4 : 0;
 
-    // 装好时的弹跳 + 悬停脉冲
+    // 装好时的弹跳 + 悬停脉冲 + 落地压扁
     if (p.pop > 0) p.pop = Math.max(0, p.pop - dt * 2.6);
+    if (p.squash > 0) p.squash = Math.max(0, p.squash - dt * 4.2);
     const hoverK = hovered === p ? 1.045 + Math.sin(t * 5 + p.phase) * 0.012 : 1;
-    p.group.scale.setScalar(hoverK + p.pop * 0.3);
+    const base = hoverK + p.pop * 0.3;
+    p.group.scale.set(base + p.squash * 0.14, base - p.squash * 0.22, base + p.squash * 0.14);
 
     const id = p.def.id;
 
@@ -1066,6 +1233,7 @@ function updateParts(dt, t) {
       if (m.userData.baseY !== undefined) m.position.y = m.userData.baseY + hopY + animY;
     });
   });
+  resolveLooseCollisions();
 }
 
 function animate() {
