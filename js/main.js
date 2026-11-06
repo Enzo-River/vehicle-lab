@@ -28,6 +28,7 @@ controls.minPolarAngle = 0.12;
 controls.maxPolarAngle = Math.PI * 0.49;
 controls.target.set(0, 1, 0);
 controls.enablePan = false;
+controls.autoRotateSpeed = 0.6;
 
 /* 灯光 */
 scene.add(new THREE.HemisphereLight(0xdfeaff, 0x2b3a52, 0.95));
@@ -135,6 +136,46 @@ const markerRoot = new THREE.Group();
 markerRoot.visible = false;
 vehicleRoot.add(markerRoot);
 
+/* 特效层：零件装好时扩散的光圈 */
+const fxRoot = new THREE.Group();
+scene.add(fxRoot);
+const fxList = [];
+
+function spawnRing(pos, color = 0x6ee7ff) {
+  const mesh = new THREE.Mesh(
+    new THREE.RingGeometry(0.16, 0.3, 36),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    })
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(pos.x, 0.03, pos.z);
+  fxRoot.add(mesh);
+  fxList.push({ mesh, t: 0, life: 0.62 });
+}
+
+function updateFx(dt) {
+  for (let i = fxList.length - 1; i >= 0; i--) {
+    const e = fxList[i];
+    e.t += dt;
+    const k = e.t / e.life;
+    if (k >= 1) {
+      e.mesh.geometry.dispose();
+      e.mesh.material.dispose();
+      fxRoot.remove(e.mesh);
+      fxList.splice(i, 1);
+      continue;
+    }
+    e.mesh.scale.setScalar(1 + k * 3.6);
+    e.mesh.material.opacity = 0.9 * (1 - k) * (1 - k);
+  }
+}
+
 const parts = [];
 let currentVehicle = VEHICLES[0];
 let scatterRadius = 3.2;
@@ -142,6 +183,7 @@ let baseMaxDim = 4;
 let baseCenterY = 1;
 
 function clearVehicle() {
+  teardownRig();
   vehicleRoot.children.slice().forEach((c) => { if (c !== markerRoot) vehicleRoot.remove(c); });
   while (markerRoot.children.length) {
     const m = markerRoot.children.pop();
@@ -182,7 +224,10 @@ function buildVehicle(def) {
       restY: 0.03,
       foot: 1,
       flashMats: [],
-      marker: null
+      marker: null,
+      hop: 0,
+      pop: 0,
+      rigParent: null
     };
     group.userData.part = part;
     parts.push(part);
@@ -268,6 +313,42 @@ function updateScatter() {
   });
 }
 
+/* ---------------- 工程机械的机械臂联动 ---------------- */
+// 演示时把斗杆挂到动臂、铲斗挂到斗杆上，动起来整条臂才会连在一起
+const RIGS = {
+  excavator: { stick: 'boom', bucket: 'stick' },
+  crane: { hook: 'boom' }
+};
+let rigActive = false;
+
+function setupRig() {
+  const rig = RIGS[currentVehicle.id];
+  if (!rig) return;
+  Object.entries(rig).forEach(([childId, parentId]) => {
+    const child = parts.find((p) => p.def.id === childId);
+    const parent = parts.find((p) => p.def.id === parentId);
+    if (!child || !parent) return;
+    child.group.position.copy(child.home).sub(parent.home);
+    child.group.rotation.set(0, 0, 0);
+    parent.group.add(child.group);
+    child.rigParent = parent;
+  });
+  rigActive = true;
+}
+
+function teardownRig() {
+  if (!rigActive) return;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    if (!p.rigParent) continue;
+    p.group.rotation.set(0, 0, 0);
+    p.group.position.copy(p.home);
+    vehicleRoot.add(p.group);
+    p.rigParent = null;
+  }
+  rigActive = false;
+}
+
 /* ---------------- 交互状态 ---------------- */
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2(-10, -10);
@@ -282,6 +363,7 @@ let downInfo = null;
 
 let soundOn = true;
 let winShown = false;
+let celebrateT = 0;
 let completed = new Set();
 try {
   completed = new Set(JSON.parse(localStorage.getItem('vl-completed') || '[]'));
@@ -341,6 +423,7 @@ function selectVehicle(id) {
   $('pp-title').textContent = v.intro;
   $('pp-steps').innerHTML = v.steps.map((s) => '<li>' + s + '</li>').join('');
   setMode('explore', true);
+  sfx('select');
   refreshGarageState();
   hint('点一点零件，看看它是什么～');
 }
@@ -348,11 +431,15 @@ function selectVehicle(id) {
 function setMode(m, silent) {
   mode = m;
   winShown = false;
+  if (!silent) sfx('mode');
   document.querySelectorAll('.mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === m));
   hideCard();
+  teardownRig();
   parts.forEach((p) => {
     p.group.rotation.set(0, 0, 0);
     p.group.scale.setScalar(1);
+    p.hop = 0;
+    p.pop = 0;
     p.group.children.forEach((m) => {
       if (m.userData.baseY !== undefined) m.position.y = m.userData.baseY;
     });
@@ -382,6 +469,15 @@ function setMode(m, silent) {
       $('principle-panel').classList.remove('hidden');
       hint('发动机、车轮和机械臂动起来啦！');
     }
+  }
+
+  if (m === 'demo') {
+    setupRig();
+    startEngine();
+    controls.autoRotate = true;
+  } else {
+    stopEngine();
+    controls.autoRotate = false;
   }
 
   refreshProgress();
@@ -434,7 +530,12 @@ function togglePrinciple() {
   }
 }
 
-function hideCelebrate() { $('celebrate').classList.add('hidden'); }
+function hideCelebrate() {
+  $('celebrate').classList.add('hidden');
+  celebrateT = 0;
+  vehicleRoot.position.y = 0;
+  controls.autoRotate = mode === 'demo';
+}
 
 let hintTimer = null;
 function hint(text, ms) {
@@ -445,36 +546,139 @@ function hint(text, ms) {
   hintTimer = setTimeout(() => el.classList.add('hidden'), ms || 2300);
 }
 
-/* ---------------- 音效 ---------------- */
+/* ---------------- 音效（WebAudio 合成，无外部音频文件） ---------------- */
 let audioCtx = null;
+let masterGain = null;
+let engineNodes = null;
+let noiseBuf = null;
+
+function ensureAudio() {
+  try {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.9;
+      masterGain.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  } catch (e) {
+    return null;
+  }
+}
+
+// 单个音符：f 起始频率，opt.to 结束频率（滑音），opt.at 延迟
+function tone(f, dur, opt = {}) {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + (opt.at || 0);
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = opt.type || 'triangle';
+  osc.frequency.setValueAtTime(f, t0);
+  if (opt.to) osc.frequency.exponentialRampToValueAtTime(Math.max(24, opt.to), t0 + dur);
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(opt.gain || 0.12, t0 + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(gain).connect(masterGain);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.03);
+}
+
+// 一小段噪声：金属碰撞、风声、沙沙声都用它
+function noise(dur, opt = {}) {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  if (!noiseBuf) {
+    noiseBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.5), ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuf;
+  const filt = ctx.createBiquadFilter();
+  filt.type = opt.type || 'bandpass';
+  filt.frequency.value = opt.freq || 1400;
+  filt.Q.value = opt.q || 1;
+  const gain = ctx.createGain();
+  const t0 = ctx.currentTime + (opt.at || 0);
+  gain.gain.setValueAtTime(opt.gain || 0.08, t0);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(filt).connect(gain).connect(masterGain);
+  src.start(t0);
+  src.stop(t0 + dur + 0.02);
+}
+
+const SFX = {
+  pick() { tone(560, 0.055, { type: 'square', gain: 0.05 }); noise(0.04, { freq: 2600, gain: 0.04 }); },
+  detach() { tone(430, 0.2, { to: 150, type: 'sawtooth', gain: 0.06 }); noise(0.16, { freq: 700, gain: 0.07, q: 0.7 }); },
+  pop() { tone(620, 0.16, { to: 300, type: 'sine', gain: 0.08 }); },
+  snap() {
+    tone(165, 0.14, { to: 60, type: 'square', gain: 0.08 });
+    noise(0.07, { freq: 2000, gain: 0.1, q: 0.6 });
+    tone(1250, 0.05, { gain: 0.04, at: 0.01 });
+  },
+  error() { tone(320, 0.12, { to: 210, gain: 0.05 }); tone(210, 0.18, { to: 140, gain: 0.05, at: 0.11 }); },
+  mode() { tone(520, 0.07, { gain: 0.06 }); tone(780, 0.1, { gain: 0.06, at: 0.08 }); },
+  select() { tone(180, 0.45, { to: 90, type: 'sawtooth', gain: 0.04 }); noise(0.28, { freq: 520, gain: 0.03 }); },
+  win() {
+    [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, 0.5, { gain: 0.1, at: i * 0.11 }));
+    noise(0.5, { freq: 3200, gain: 0.03, type: 'highpass', at: 0.44 });
+  }
+};
+
 function sfx(type) {
   if (!soundOn) return;
-  try {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    const notes = {
-      pick: [[520, 0.06]],
-      pop: [[640, 0.07]],
-      snap: [[880, 0.1], [1320, 0.13]],
-      win: [[523, 0.55], [659, 0.55], [784, 0.55], [1046, 0.7]]
-    }[type] || [[600, 0.08]];
-    const t0 = audioCtx.currentTime;
-    let offset = 0;
-    notes.forEach(([freq, dur]) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, t0 + offset);
-      gain.gain.setValueAtTime(0, t0 + offset);
-      gain.gain.linearRampToValueAtTime(0.14, t0 + offset + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.001, t0 + offset + dur);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(t0 + offset);
-      osc.stop(t0 + offset + dur + 0.02);
-      offset += dur * 0.75;
-    });
-  } catch (e) { /* 忽略音频错误 */ }
+  try { (SFX[type] || SFX.pop)(); } catch (e) { /* 忽略音频错误 */ }
+}
+
+// 演示模式下的低频发动机轰鸣（持续音）
+function startEngine() {
+  if (!soundOn || engineNodes) return;
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const t0 = ctx.currentTime;
+  const out = ctx.createGain();
+  out.gain.setValueAtTime(0.0001, t0);
+  out.gain.exponentialRampToValueAtTime(0.045, t0 + 0.7);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 380;
+  lp.Q.value = 2;
+  const o1 = ctx.createOscillator();
+  o1.type = 'sawtooth';
+  o1.frequency.value = 62;
+  const o2 = ctx.createOscillator();
+  o2.type = 'square';
+  o2.frequency.value = 31;
+  o2.detune.value = 14;
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sine';
+  lfo.frequency.value = 5.2;
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = 3.5;
+  lfo.connect(lfoGain);
+  lfoGain.connect(o1.frequency);
+  o1.connect(lp);
+  o2.connect(lp);
+  lp.connect(out);
+  out.connect(masterGain);
+  [o1, o2, lfo].forEach((o) => o.start(t0));
+  engineNodes = { out, oscs: [o1, o2, lfo] };
+}
+
+function stopEngine() {
+  if (!engineNodes) return;
+  if (!audioCtx) { engineNodes = null; return; }
+  const t = audioCtx.currentTime;
+  const { out, oscs } = engineNodes;
+  out.gain.cancelScheduledValues(t);
+  out.gain.setValueAtTime(Math.max(0.0002, out.gain.value), t);
+  out.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+  oscs.forEach((o) => o.stop(t + 0.45));
+  engineNodes = null;
 }
 
 /* ---------------- 交互 ---------------- */
@@ -573,10 +777,13 @@ function handleClick(part) {
     if (part.state === 'placed') {
       part.state = 'detached';
       part.target.copy(part.home).add(part.offset);
-      sfx('pop');
+      part.hop = 0.001;
+      sfx('detach');
     } else {
       part.state = 'returning';
       part.target.copy(part.home);
+      part.pop = 1;
+      spawnRing(part.home);
       sfx('snap');
     }
     refreshProgress();
@@ -594,6 +801,8 @@ function placePart(part) {
   part.state = 'returning';
   part.target.copy(part.home);
   if (part.marker) part.marker.visible = false;
+  part.pop = 1;
+  spawnRing(part.home);
   sfx('snap');
   refreshProgress();
 }
@@ -611,6 +820,11 @@ function checkWin() {
   $('celebrate').classList.remove('hidden');
   sfx('win');
   spawnConfetti();
+  celebrateT = 3.4;
+  controls.autoRotate = true;
+  parts.forEach((p, i) => {
+    if (i % 2 === 0) setTimeout(() => spawnRing(p.home, 0xffc857), i * 90);
+  });
 }
 
 function spawnConfetti() {
@@ -677,12 +891,14 @@ function explodeAll() {
     setMode('assemble');
     return;
   }
-  parts.forEach((p) => {
+  if (mode === 'demo') setMode('explore', true);
+  parts.forEach((p, i) => {
     p.state = 'detached';
     p.target.copy(p.home).add(p.offset);
+    setTimeout(() => { p.hop = 0.001; }, i * 55);
   });
   refreshProgress();
-  sfx('pop');
+  sfx('detach');
   hint('所有零件都拆下来啦，点零件看它的本领～');
 }
 
@@ -690,6 +906,7 @@ function attachAll(instant) {
   parts.forEach((p) => {
     p.state = 'returning';
     p.target.copy(p.home);
+    p.hop = 0;
     if (p.marker) p.marker.visible = false;
     if (instant) {
       p.group.position.copy(p.home);
@@ -704,8 +921,10 @@ function attachAll(instant) {
 
 /* ---------------- 逐帧更新 ---------------- */
 function updateParts(dt, t) {
+  const rigged = !!RIGS[currentVehicle.id];
   parts.forEach((p) => {
-    if (p.state !== 'dragging') {
+    // 被机械臂挂接的零件用的是相对坐标，不能再自己飞回原位
+    if (p.state !== 'dragging' && !(rigActive && p.rigParent)) {
       p.group.position.lerp(p.target, 1 - Math.exp(-dt * 8.5));
       if (p.state === 'returning' && p.group.position.distanceTo(p.target) < 0.05) {
         p.group.position.copy(p.target);
@@ -715,9 +934,27 @@ function updateParts(dt, t) {
       }
     }
 
+    // 拆下瞬间的小跳
+    if (p.hop > 0 && p.hop < 1) p.hop = Math.min(1, p.hop + dt / 0.55);
+    const hopY = p.hop > 0 && p.hop < 1 ? Math.sin(p.hop * Math.PI) * 0.4 : 0;
+
+    // 装好时的弹跳 + 悬停脉冲
+    if (p.pop > 0) p.pop = Math.max(0, p.pop - dt * 2.6);
+    const hoverK = hovered === p ? 1.045 + Math.sin(t * 5 + p.phase) * 0.012 : 1;
+    p.group.scale.setScalar(hoverK + p.pop * 0.3);
+
+    const id = p.def.id;
+
     if (mode === 'demo') {
-      if (p.def.spin === 'x') p.group.rotation.x += dt * 6;
-      if (p.def.anim === 'spin') p.group.rotation.z += dt * 1.5;
+      if (p.def.spin === 'x') p.group.rotation.x += dt * 7.5;
+      if (p.def.anim === 'spin') p.group.rotation.z += dt * 2.1;
+      if (id === 'steering') p.group.rotation.z = Math.sin(t * 1.6 + p.phase) * 0.5;
+      if (rigged) {
+        if (id === 'boom') p.group.rotation.x = Math.sin(t * 1.0) * 0.18;
+        else if (id === 'stick') p.group.rotation.x = Math.sin(t * 1.0 - 0.8) * 0.26;
+        else if (id === 'bucket') p.group.rotation.x = Math.sin(t * 1.0 - 1.5) * 0.45;
+        else if (id === 'hook') p.group.rotation.z = Math.sin(t * 1.4) * 0.05;
+      }
     }
 
     if (p.def.anim === 'flash' && p.flashMats.length) {
@@ -725,26 +962,41 @@ function updateParts(dt, t) {
       p.flashMats.forEach((m) => { m.emissiveIntensity = 1.3 + pulse * 1.7; });
     }
 
-    if (mode !== 'demo' || p.state !== 'placed') return;
-    const a = p.def.anim;
-    if (a === 'swing') {
-      p.group.rotation.x = Math.sin(t * 1.1 + p.phase) * 0.32;
-    } else if (a === 'bob') {
-      p.group.children.forEach((m) => {
-        m.position.y = m.userData.baseY + Math.sin(t * 1.5 + p.phase) * 0.12;
-      });
-    } else if (a === 'shake') {
-      p.group.children.forEach((m, i) => {
-        m.position.y = m.userData.baseY + Math.sin(t * 24 + i * 2) * 0.012;
-      });
+    let animY = 0;
+    if (mode === 'demo' && p.state === 'placed') {
+      const a = p.def.anim;
+      if (a === 'swing' && !rigged) p.group.rotation.x = Math.sin(t * 1.1 + p.phase) * 0.32;
+      else if (a === 'bob') animY = Math.sin(t * 1.5 + p.phase) * 0.12;
+      else if (a === 'shake') animY = Math.sin(t * 24 + p.phase * 3) * 0.012;
     }
+
+    p.group.children.forEach((m) => {
+      if (m.userData.baseY !== undefined) m.position.y = m.userData.baseY + hopY + animY;
+    });
   });
 }
 
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
-  updateParts(dt, clock.elapsedTime);
+  const t = clock.elapsedTime;
+  updateParts(dt, t);
+  updateFx(dt);
+
+  if (celebrateT > 0) {
+    celebrateT -= dt;
+    // 高兴地跳一跳
+    vehicleRoot.position.y = Math.abs(Math.sin(t * 7)) * 0.14 * Math.min(1, celebrateT / 1.2);
+    if (celebrateT <= 0) {
+      vehicleRoot.position.y = 0;
+      controls.autoRotate = mode === 'demo';
+    }
+  } else if (mode === 'demo') {
+    vehicleRoot.position.y = Math.sin(t * 2.2) * 0.025;
+  } else {
+    vehicleRoot.position.y = 0;
+  }
+
   controls.update();
   renderer.render(scene, camera);
 }
@@ -762,6 +1014,8 @@ function resize() {
 
 /* ---------------- 事件绑定 ---------------- */
 renderer.domElement.addEventListener('pointerdown', onPointerDown);
+// 浏览器要求先有一次用户操作才能播放声音，这里做一次性解锁
+window.addEventListener('pointerdown', () => { if (soundOn) ensureAudio(); }, { once: true });
 window.addEventListener('pointermove', onPointerMove);
 window.addEventListener('pointerup', onPointerUp);
 window.addEventListener('resize', resize);
@@ -780,7 +1034,12 @@ $('btn-sound').addEventListener('click', () => {
   soundOn = !soundOn;
   $('btn-sound').textContent = soundOn ? '🔊 音效' : '🔇 静音';
   $('btn-sound').setAttribute('aria-pressed', String(soundOn));
-  if (soundOn) sfx('pop');
+  if (soundOn) {
+    sfx('pop');
+    if (mode === 'demo') startEngine();
+  } else {
+    stopEngine();
+  }
 });
 $('btn-again').addEventListener('click', () => { hideCelebrate(); setMode('assemble'); });
 $('btn-next').addEventListener('click', () => {
