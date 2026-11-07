@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { RoomEnvironment } from '../vendor/RoomEnvironment.js';
 import { VEHICLES, CATEGORIES, CATEGORY_META } from './data/index.js';
 
 /* ---------------- 基础环境 ---------------- */
@@ -55,10 +54,42 @@ const rim = new THREE.DirectionalLight(0x88bbff, 0.7);
 rim.position.set(-8, 6, -10);
 scene.add(rim);
 
-/* 环境反射，让车漆有光泽 */
+/* 环境反射：程序化搭建一个摄影棚，深色环境 + 几块柔光箱，
+   车漆上会出现细长的高光带，比均匀的室内环境更像真车打光 */
+function buildStudioEnvironment() {
+  const env = new THREE.Scene();
+  const box = new THREE.BoxGeometry();
+  box.deleteAttribute('uv');
+  const room = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x18212f, side: THREE.BackSide }));
+  room.scale.set(34, 20, 34);
+  room.position.y = 7;
+  env.add(room);
+  const panel = (intensity, [x, y, z], [sx, sy, sz]) => {
+    const m = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: new THREE.Color().setScalar(intensity) }));
+    m.position.set(x, y, z);
+    m.scale.set(sx, sy, sz);
+    env.add(m);
+  };
+  panel(26, [0, 15, 0], [11, 0.1, 7]);        // 顶部主柔光箱
+  panel(15, [-14, 7, 4], [0.1, 7, 9]);        // 左侧灯条
+  panel(11, [14, 6, -5], [0.1, 6, 8]);        // 右后侧灯条
+  panel(9, [0, 5, 15], [10, 4, 0.1]);         // 正前方补光
+  panel(6, [0, 2, -15], [10, 3, 0.1]);        // 车后轮廓光
+  return env;
+}
+
 const pmrem = new THREE.PMREMGenerator(renderer);
 pmrem.compileEquirectangularShader();
-scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.05).texture;
+{
+  const envScene = buildStudioEnvironment();
+  scene.environment = pmrem.fromScene(envScene, 0.04).texture;
+  envScene.traverse((o) => {
+    if (o.isMesh) {
+      o.geometry.dispose();
+      o.material.dispose();
+    }
+  });
+}
 
 /* 展台 */
 const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a1322, roughness: 1, metalness: 0 });
@@ -90,25 +121,117 @@ const ringMat = new THREE.MeshBasicMaterial({ color: 0x4ea8ff, transparent: true
   scene.add(ring);
 });
 
+/* 车底接触阴影：让车“压”在地面上，而不是浮着 */
+function contactShadowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(128, 128, 8, 128, 128, 126);
+  grad.addColorStop(0, 'rgba(2,7,16,0.72)');
+  grad.addColorStop(0.5, 'rgba(2,7,16,0.42)');
+  grad.addColorStop(1, 'rgba(2,7,16,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 256, 256);
+  return new THREE.CanvasTexture(c);
+}
+
+const contactShadow = new THREE.Mesh(
+  new THREE.PlaneGeometry(1, 1),
+  new THREE.MeshBasicMaterial({ map: contactShadowTexture(), transparent: true, depthWrite: false })
+);
+contactShadow.rotation.x = -Math.PI / 2;
+contactShadow.position.y = 0.004;
+contactShadow.renderOrder = 1;
+scene.add(contactShadow);
+
 /* ---------------- 材质与几何缓存 ---------------- */
 const matCache = new Map();
+const texCache = new Map();
+
+// 程序化贴图：车牌、格栅网纹，用 canvas 画出来，不依赖外部图片
+function getTexture(kind) {
+  if (texCache.has(kind)) return texCache.get(kind);
+  const c = document.createElement('canvas');
+  let tex = null;
+  if (kind === 'plate') {
+    c.width = 512;
+    c.height = 160;
+    const g = c.getContext('2d');
+    g.fillStyle = '#12489c';
+    g.fillRect(0, 0, 512, 160);
+    g.strokeStyle = '#eef3fb';
+    g.lineWidth = 7;
+    g.strokeRect(9, 9, 494, 142);
+    g.fillStyle = '#f4f8ff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = 'bold 66px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif';
+    g.fillText('沪A·88888', 256, 84);
+    // 车牌两端的固定螺钉
+    [[34, 80], [478, 80]].forEach(([x, y]) => {
+      g.beginPath();
+      g.arc(x, y, 7, 0, Math.PI * 2);
+      g.fill();
+    });
+    tex = new THREE.CanvasTexture(c);
+  } else if (kind === 'grille') {
+    c.width = 256;
+    c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = '#0d0f12';
+    g.fillRect(0, 0, 256, 128);
+    g.strokeStyle = '#2c3036';
+    g.lineWidth = 3;
+    for (let x = 8; x < 256; x += 18) {
+      g.beginPath();
+      g.moveTo(x, 4);
+      g.lineTo(x, 124);
+      g.stroke();
+    }
+    g.strokeStyle = '#1d2126';
+    for (let y = 10; y < 128; y += 20) {
+      g.beginPath();
+      g.moveTo(4, y);
+      g.lineTo(252, y);
+      g.stroke();
+    }
+    g.strokeStyle = '#3c424a';
+    g.lineWidth = 5;
+    g.strokeRect(4, 4, 248, 120);
+    tex = new THREE.CanvasTexture(c);
+  }
+  if (tex) {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  }
+  texCache.set(kind, tex);
+  return tex;
+}
+
+// 车窗四周的黑色密封胶条（frit），一块玻璃共用一份材质
+const fritMat = new THREE.MeshStandardMaterial({ color: 0x0a0f14, roughness: 0.72, metalness: 0 });
+
 function getMaterial(pc) {
   // 玻璃单独用更光滑、更通透的参数，看起来才像车窗
-  const metal = pc.metal !== undefined ? pc.metal : (pc.gl ? 0.1 : 0.28);
-  const rough = pc.rough !== undefined ? pc.rough : (pc.gl ? 0.05 : 0.5);
-  const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.76 : 1);
+  const metal = pc.metal !== undefined ? pc.metal : (pc.gl ? 0.08 : 0.28);
+  const rough = pc.rough !== undefined ? pc.rough : (pc.gl ? 0.07 : 0.5);
+  const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.8 : 1);
   const isHull = pc.g === 'hull';
-  const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1, isHull ? 1 : 0].join('|');
+  const tex = pc.tex ? getTexture(pc.tex) : null;
+  const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1, isHull ? 1 : 0, pc.tex || ''].join('|');
   if (matCache.has(key)) return matCache.get(key);
   // 车漆用物理材质加清漆层，反光更像真车；橡胶、玻璃不加
   const shiny = !pc.gl && rough <= 0.62;
   const m = new THREE.MeshPhysicalMaterial({
-    color: pc.c,
+    color: tex ? 0xffffff : pc.c,
+    map: tex,
     metalness: metal,
     roughness: rough,
-    clearcoat: shiny ? 1 : pc.gl ? 0.5 : 0,
-    clearcoatRoughness: shiny ? 0.1 : 0.28,
-    envMapIntensity: pc.gl ? 0.65 : 0.72,
+    // 玻璃用少量清漆层提亮高光，避免整块玻璃被柔光箱照成一片白
+    clearcoat: pc.gl ? 0.25 : shiny ? 1 : 0,
+    clearcoatRoughness: pc.gl ? 0.1 : shiny ? 0.1 : 0.28,
+    specularIntensity: pc.gl ? 0.55 : 1,
+    envMapIntensity: pc.gl ? 0.45 : 0.85,
     transparent: !!pc.gl || opacity < 1,
     opacity,
     emissive: new THREE.Color(pc.e || 0x000000),
@@ -424,6 +547,25 @@ function buildVehicle(def) {
       mesh.receiveShadow = !pc.gl;
       mesh.userData.baseY = mesh.position.y;
       group.add(mesh);
+
+      // 曲面车窗外加一圈很窄的黑色密封边，像真车玻璃的 frit 边条
+      if (pc.g === 'glass') {
+        const dz = 0.022 * Math.sign(pc.z1 - pc.z0);
+        const du = 0.026 * Math.sign(pc.u1 - pc.u0);
+        const frame = new THREE.Mesh(getGeometry({
+          ...pc,
+          z0: pc.z0 - dz,
+          z1: pc.z1 + dz,
+          u0: pc.u0 - du,
+          u1: pc.u1 + du,
+          off: Math.max(0.0015, (pc.off ?? 0.006) - 0.0045)
+        }), fritMat);
+        frame.position.copy(mesh.position);
+        if (pc.r) frame.rotation.copy(mesh.rotation);
+        frame.castShadow = false;
+        frame.receiveShadow = false;
+        group.add(frame);
+      }
     });
 
     const part = {
@@ -510,6 +652,8 @@ function buildVehicle(def) {
   baseMaxDim = Math.max(vsize.x, vsize.y, vsize.z, 3.2);
   baseCenterY = vbb.getCenter(new THREE.Vector3()).y;
   scatterRadius = Math.min(5.6, Math.max(4.4, baseMaxDim * 0.9));
+  contactShadow.scale.set(vsize.x * 1.5, vsize.z * 1.25, 1);
+  contactShadow.position.z = vbb.getCenter(new THREE.Vector3()).z;
   assignSlots();
 }
 
