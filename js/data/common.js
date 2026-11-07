@@ -34,6 +34,14 @@ export const cone = (r, h, color, x = 0, y = 0, z = 0, o = {}) =>
 export const hull = (sta, color, o = {}) =>
   ({ g: 'hull', sta, c: color, p: [0, 0, 0], s: [0, 0, 0], ...o });
 
+// 贴合车壳曲面的车窗玻璃：沿 hull 的同一段横截面取一块曲面片
+// z0/z1 为车窗在车身方向的范围，u0/u1 为横截面上的角度范围（u=π/2 是车顶，u=π 是左侧）
+export const glassPatch = (sta, color, o = {}) => ({
+  g: 'glass', sta, c: color, p: [0, 0, 0], s: [0, 0, 0], gl: 1,
+  pow: 3.6, tumble: 0.16, tuck: 0.12, segZ: 8, segU: 12, off: 0.006,
+  ...o
+});
+
 // 轮眉圆环（半圆），平放在车轮所在的竖直平面里
 export const arch = (R, t, color, x = 0, y = 0, z = 0, o = {}) =>
   ({ g: 'arch', s: [R, t, 8], c: color, p: [x, y, z], r: [0, Math.PI / 2, 0], ...o });

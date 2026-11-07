@@ -198,14 +198,62 @@ function hullGeometry(sta, pow = 3.6, tumble = 0.16, tuck = 0.12, seg = 26) {
   return geo;
 }
 
+// 贴合车壳的曲面玻璃片：采样与 hull 相同的超椭圆横截面，只取其中一段
+function glassGeometry(sta, z0, z1, u0, u1, pow = 3.6, tumble = 0.16, tuck = 0.12, segZ = 8, segU = 12, off = 0.006) {
+  const sorted = [...sta].sort((a, b) => a[0] - b[0]);
+  const prof = (z) => {
+    const zz = Math.max(sorted[0][0], Math.min(sorted[sorted.length - 1][0], z));
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const A = sorted[i], B = sorted[i + 1];
+      if (zz >= A[0] && zz <= B[0]) {
+        const t = (zz - A[0]) / (B[0] - A[0] || 1);
+        return { a: A[1] + (B[1] - A[1]) * t, b: A[2] + (B[2] - A[2]) * t, cy: A[3] + (B[3] - A[3]) * t };
+      }
+    }
+    return { a: 0, b: 0, cy: 0 };
+  };
+  const verts = [];
+  const idx = [];
+  for (let iz = 0; iz <= segZ; iz++) {
+    const z = z0 + ((z1 - z0) * iz) / segZ;
+    const { a, b, cy } = prof(z);
+    for (let iu = 0; iu <= segU; iu++) {
+      const u = u0 + ((u1 - u0) * iu) / segU;
+      const cs = Math.cos(u), sn = Math.sin(u);
+      let x = Math.sign(cs) * Math.pow(Math.abs(cs), 2 / pow) * (a + off);
+      const y = Math.sign(sn) * Math.pow(Math.abs(sn), 2 / pow) * (b + off);
+      const k = y / (b + off);
+      x *= 1 - (k > 0 ? tumble * k : tuck * -k);
+      verts.push(x, cy + y, z);
+    }
+  }
+  for (let iz = 0; iz < segZ; iz++) {
+    for (let iu = 0; iu < segU; iu++) {
+      const A = iz * (segU + 1) + iu;
+      const B = A + 1;
+      const C = A + segU + 2;
+      const D = A + segU + 1;
+      idx.push(A, B, C, A, C, D);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function getGeometry(pc) {
   const key = pc.g === 'hull'
     ? 'hull:' + JSON.stringify([pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg])
-    : pc.g + ':' + pc.s.join(',');
+    : pc.g === 'glass'
+      ? 'glass:' + JSON.stringify([pc.sta, pc.z0, pc.z1, pc.u0, pc.u1, pc.pow, pc.tumble, pc.tuck, pc.segZ, pc.segU, pc.off])
+      : pc.g + ':' + pc.s.join(',');
   if (geoCache.has(key)) return geoCache.get(key);
   let geo;
   switch (pc.g) {
     case 'hull': geo = hullGeometry(pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg); break;
+    case 'glass': geo = glassGeometry(pc.sta, pc.z0, pc.z1, pc.u0, pc.u1, pc.pow, pc.tumble, pc.tuck, pc.segZ, pc.segU, pc.off); break;
     case 'arch': geo = new THREE.TorusGeometry(pc.s[0], pc.s[1], 8, 20, Math.PI); break;
     case 'box': {
       const min = Math.min(pc.s[0], pc.s[1], pc.s[2]);
