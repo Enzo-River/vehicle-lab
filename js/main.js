@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
+import { EffectComposer } from '../vendor/postprocessing/EffectComposer.js';
+import { RenderPass } from '../vendor/postprocessing/RenderPass.js';
+import { SSAOPass } from '../vendor/postprocessing/SSAOPass.js';
+import { UnrealBloomPass } from '../vendor/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from '../vendor/postprocessing/OutputPass.js';
 import { VEHICLES, CATEGORIES, CATEGORY_META } from './data/index.js';
 
 /* ---------------- 基础环境 ---------------- */
@@ -143,6 +148,32 @@ contactShadow.rotation.x = -Math.PI / 2;
 contactShadow.position.y = 0.004;
 contactShadow.renderOrder = 1;
 scene.add(contactShadow);
+
+/* ---------------- 后处理：SSAO 环境光遮蔽 + Bloom 灯光辉光 ---------------- */
+// 4x MSAA 的离屏缓冲，后处理链路里也能保持边缘平滑
+const postSize = new THREE.Vector2();
+renderer.getSize(postSize);
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(postSize.x, postSize.y, {
+  type: THREE.HalfFloatType,
+  samples: 4
+}));
+composer.setPixelRatio(Math.min(renderer.getPixelRatio(), 1.5));
+composer.setSize(postSize.x, postSize.y);
+
+const renderPass = new RenderPass(scene, camera);
+const ssaoPass = new SSAOPass(scene, camera, postSize.x, postSize.y);
+ssaoPass.kernelRadius = 0.45;
+ssaoPass.minDistance = 0.0003;
+ssaoPass.maxDistance = 0.012;
+// 触屏设备算力有限，只保留 Bloom，避免掉帧
+const isTouch = window.matchMedia('(pointer: coarse)').matches;
+ssaoPass.enabled = !isTouch;
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(postSize.x, postSize.y), 0.34, 0.55, 0.92);
+const outputPass = new OutputPass();
+composer.addPass(renderPass);
+composer.addPass(ssaoPass);
+composer.addPass(bloomPass);
+composer.addPass(outputPass);
 
 /* ---------------- 材质与几何缓存 ---------------- */
 const matCache = new Map();
@@ -1649,6 +1680,13 @@ function animate() {
     vehicleRoot.position.y = 0;
   }
 
+  // 接触阴影跟着车身走，零件散开时不会在场地中央留一团黑影
+  const bodyPart = parts.find((p) => p.def.id === 'body');
+  if (bodyPart) {
+    contactShadow.position.x = bodyPart.group.position.x;
+    contactShadow.position.z = bodyPart.group.position.z;
+  }
+
   controls.update();
   if (camShake > 0.0006) {
     camera.position.x += (Math.random() - 0.5) * camShake;
@@ -1658,7 +1696,7 @@ function animate() {
   } else {
     camShake = 0;
   }
-  renderer.render(scene, camera);
+  composer.render();
 }
 
 function resize() {
@@ -1666,6 +1704,8 @@ function resize() {
   const h = stage.clientHeight;
   if (!w || !h) return;
   renderer.setSize(w, h);
+  composer.setPixelRatio(Math.min(renderer.getPixelRatio(), 1.5));
+  composer.setSize(w, h);
   const prevAspect = camera.aspect;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -1723,6 +1763,10 @@ if (location.search.indexOf('debug') !== -1) {
     renderer,
     scene,
     controls,
+    composer,
+    ssaoPass,
+    bloomPass,
+    outputPass,
     VEHICLES,
     setMode,
     selectVehicle,
