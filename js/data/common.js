@@ -46,6 +46,51 @@ export const glassPatch = (sta, color, o = {}) => ({
 export const arch = (R, t, color, x = 0, y = 0, z = 0, o = {}) =>
   ({ g: 'arch', s: [R, t, 8], c: color, p: [x, y, z], r: [0, Math.PI / 2, 0], ...o });
 
+// 前大灯总成：深色灯腔 + 镀铬反光碗 + 双透镜 + 日行灯导光条 + 外侧转向灯
+// (x,y,z) 是灯腔中心，朝 +Z 安装；w/h 是灯罩尺寸
+export function lamp(x, y, z, w = 0.32, h = 0.13, o = {}) {
+  const d = o.d ?? 0.06;
+  const f = z + d / 2;
+  const side = x >= 0 ? 1 : -1;
+  const ps = [
+    box(w, h, d, 0x0e1216, x, y, z, { rough: 0.5, metal: 0.35 }),
+    box(w * 0.9, h * 0.76, 0.012, 0x2b333c, x, y, f + 0.002, { metal: 0.92, rough: 0.2 }),
+    ...(o.single
+      ? [cyl(h * 0.4, h * 0.4, 0.016, 0xdce8f5, x, y, f + 0.012, {
+          r: [Math.PI / 2, 0, 0], seg: 18, e: 0xc9dcff, ei: 0.3, metal: 0.6, rough: 0.08
+        })]
+      : [
+          cyl(h * 0.3, h * 0.3, 0.016, 0xdce8f5, x - w * 0.24, y, f + 0.012, {
+            r: [Math.PI / 2, 0, 0], seg: 18, e: 0xc9dcff, ei: 0.32, metal: 0.6, rough: 0.08
+          }),
+          cyl(h * 0.3, h * 0.3, 0.016, 0xdce8f5, x + w * 0.24, y, f + 0.012, {
+            r: [Math.PI / 2, 0, 0], seg: 18, e: 0xc9dcff, ei: 0.32, metal: 0.6, rough: 0.08
+          })
+        ]),
+    box(w * 0.84, h * 0.09, 0.01, 0xf2f7ff, x, y + h * 0.36, f + 0.01, { e: 0xdfeaff, ei: 0.45 })
+  ];
+  if (o.turn !== false) {
+    ps.push(box(w * 0.14, h * 0.46, 0.01, 0xffa62b, x + side * w * 0.41, y - h * 0.02, f + 0.011, {
+      e: 0xff9a1a, ei: 0.45
+    }));
+  }
+  return ps;
+}
+
+// 尾灯总成：深色灯腔 + 双层红色导光条 + 外侧琥珀转向段，朝 -Z 安装
+export function tailLamp(x, y, z, w = 0.34, h = 0.12, o = {}) {
+  const d = o.d ?? 0.05;
+  const f = z - d / 2;
+  const side = x >= 0 ? 1 : -1;
+  return [
+    box(w, h, d, 0x140c0e, x, y, z, { rough: 0.45, metal: 0.3 }),
+    box(w * 0.92, h * 0.74, 0.012, 0x5e1116, x, y, f - 0.002, { metal: 0.4, rough: 0.28 }),
+    box(w * 0.86, h * 0.11, 0.01, 0xff3b34, x, y + h * 0.28, f - 0.01, { e: 0xff2a22, ei: 0.5 }),
+    box(w * 0.86, h * 0.11, 0.01, 0xff3b34, x, y - h * 0.28, f - 0.01, { e: 0xff2a22, ei: 0.5 }),
+    box(w * 0.14, h * 0.5, 0.01, 0xffb02a, x + side * w * 0.4, y, f - 0.011, { e: 0xffa31a, ei: 0.4 })
+  ];
+}
+
 // 一只车轮：轮胎 + 胎面花纹 + 轮辋 + 辐条 + 刹车盘，轴向沿 X 轴
 export function wheelSet(radius, width, rim = 0xd8d8d8, spokes = 5) {
   const ps = [

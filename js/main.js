@@ -230,6 +230,79 @@ function getTexture(kind) {
     g.lineWidth = 5;
     g.strokeRect(4, 4, 248, 120);
     tex = new THREE.CanvasTexture(c);
+  } else if (kind === 'badge' || kind === 'badgeGold') {
+    // 圆形品牌徽标：外圈金属环 + 深色底 + 中央 V 字，透明底方便抠成圆形
+    c.width = c.height = 256;
+    const g = c.getContext('2d');
+    const gold = kind === 'badgeGold';
+    const cx = 128;
+    const cy = 128;
+    const ring = g.createLinearGradient(18, 14, 240, 242);
+    ring.addColorStop(0, gold ? '#f9ecc0' : '#ffffff');
+    ring.addColorStop(0.34, gold ? '#d9b45a' : '#c6d2df');
+    ring.addColorStop(0.62, gold ? '#8a6420' : '#6f7f92');
+    ring.addColorStop(1, gold ? '#f4e2ae' : '#eef4fa');
+    g.beginPath();
+    g.arc(cx, cy, 120, 0, Math.PI * 2);
+    g.fillStyle = ring;
+    g.fill();
+    const field = g.createRadialGradient(cx - 32, cy - 46, 8, cx, cy, 104);
+    if (gold) {
+      field.addColorStop(0, '#9a1f1f');
+      field.addColorStop(1, '#43090b');
+    } else {
+      field.addColorStop(0, '#284d74');
+      field.addColorStop(1, '#0b1b2c');
+    }
+    g.beginPath();
+    g.arc(cx, cy, 99, 0, Math.PI * 2);
+    g.fillStyle = field;
+    g.fill();
+    g.beginPath();
+    g.arc(cx, cy, 99, 0, Math.PI * 2);
+    g.lineWidth = 4;
+    g.strokeStyle = gold ? 'rgba(255,238,186,.85)' : 'rgba(226,238,250,.8)';
+    g.stroke();
+    // 中央 V 字：两笔粗线拼成，下方加一道短横杠当品牌缩写
+    const vGrad = g.createLinearGradient(58, 62, 198, 202);
+    vGrad.addColorStop(0, '#ffffff');
+    vGrad.addColorStop(0.5, gold ? '#ffe9a8' : '#e2ecf6');
+    vGrad.addColorStop(1, gold ? '#c8a04a' : '#94a6ba');
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.lineWidth = 30;
+    g.strokeStyle = vGrad;
+    g.beginPath();
+    g.moveTo(72, 80);
+    g.lineTo(128, 178);
+    g.lineTo(184, 80);
+    g.stroke();
+    g.lineWidth = 13;
+    g.beginPath();
+    g.moveTo(96, 168);
+    g.lineTo(160, 168);
+    g.stroke();
+    tex = new THREE.CanvasTexture(c);
+  } else if (kind === 'logo') {
+    // 镀铬字标：透明底 + 金属渐变文字，贴在车身上像真车铭牌
+    c.width = 512;
+    c.height = 128;
+    const g = c.getContext('2d');
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = '900 92px "Avenir Next", "Futura", "PingFang SC", Arial, sans-serif';
+    const metal = g.createLinearGradient(0, 22, 0, 106);
+    metal.addColorStop(0, '#ffffff');
+    metal.addColorStop(0.4, '#d3dee9');
+    metal.addColorStop(0.52, '#8c9dae');
+    metal.addColorStop(0.63, '#eef5fb');
+    metal.addColorStop(1, '#a4b2c0');
+    g.lineWidth = 9;
+    g.strokeStyle = '#39434f';
+    g.strokeText('VELO', 256, 68);
+    g.fillStyle = metal;
+    g.fillText('VELO', 256, 68);
+    tex = new THREE.CanvasTexture(c);
   }
   if (tex) {
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -249,7 +322,9 @@ function getMaterial(pc) {
   const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.8 : 1);
   const isHull = pc.g === 'hull';
   const tex = pc.tex ? getTexture(pc.tex) : null;
-  const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1, isHull ? 1 : 0, pc.tex || ''].join('|');
+  // alpha 贴图（徽标、字标）用 alphaTest 抠形，免得透明边缘和车身抢深度
+  const cutout = !!pc.alpha;
+  const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1, isHull ? 1 : 0, pc.tex || '', cutout ? 1 : 0].join('|');
   if (matCache.has(key)) return matCache.get(key);
   // 车漆用物理材质加清漆层，反光更像真车；橡胶、玻璃不加
   const shiny = !pc.gl && rough <= 0.62;
@@ -259,11 +334,13 @@ function getMaterial(pc) {
     metalness: metal,
     roughness: rough,
     // 玻璃用少量清漆层提亮高光，避免整块玻璃被柔光箱照成一片白
-    clearcoat: pc.gl ? 0.25 : shiny ? 1 : 0,
+    clearcoat: pc.gl ? 0.25 : (cutout ? 0 : shiny ? 1 : 0),
     clearcoatRoughness: pc.gl ? 0.1 : shiny ? 0.1 : 0.28,
-    specularIntensity: pc.gl ? 0.55 : 1,
-    envMapIntensity: pc.gl ? 0.45 : 0.85,
-    transparent: !!pc.gl || opacity < 1,
+    // 徽标/字标压低高光和环境反射，避免被头顶柔光箱照成一片白
+    specularIntensity: pc.gl ? 0.55 : (cutout ? 0.35 : 1),
+    envMapIntensity: pc.gl ? 0.45 : (cutout ? 0.5 : 0.85),
+    transparent: !cutout && (!!pc.gl || opacity < 1),
+    alphaTest: cutout ? 0.4 : 0,
     opacity,
     emissive: new THREE.Color(pc.e || 0x000000),
     emissiveIntensity: pc.ei || 1,
