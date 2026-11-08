@@ -15,7 +15,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.92;
+renderer.toneMappingExposure = 0.86;
 renderer.domElement.style.display = 'block';
 renderer.domElement.style.touchAction = 'none';
 stage.appendChild(renderer.domElement);
@@ -41,7 +41,7 @@ let camShake = 0;
 scene.add(new THREE.HemisphereLight(0xdfeaff, 0x2b3a52, 0.55));
 scene.add(new THREE.AmbientLight(0xffffff, 0.08));
 
-const sun = new THREE.DirectionalLight(0xfff6e8, 2.9);
+const sun = new THREE.DirectionalLight(0xfff6e8, 2.35);
 sun.position.set(9, 14, 8);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -75,11 +75,11 @@ function buildStudioEnvironment() {
     m.scale.set(sx, sy, sz);
     env.add(m);
   };
-  panel(26, [0, 15, 0], [11, 0.1, 7]);        // 顶部主柔光箱
-  panel(15, [-14, 7, 4], [0.1, 7, 9]);        // 左侧灯条
-  panel(11, [14, 6, -5], [0.1, 6, 8]);        // 右后侧灯条
-  panel(9, [0, 5, 15], [10, 4, 0.1]);         // 正前方补光
-  panel(6, [0, 2, -15], [10, 3, 0.1]);        // 车后轮廓光
+  panel(9, [0, 15, 0], [11, 0.1, 7]);         // 顶部主柔光箱
+  panel(5, [-14, 7, 4], [0.1, 7, 9]);         // 左侧灯条
+  panel(4, [14, 6, -5], [0.1, 6, 8]);         // 右后侧灯条
+  panel(3, [0, 5, 15], [10, 4, 0.1]);         // 正前方补光
+  panel(2, [0, 2, -15], [10, 3, 0.1]);        // 车后轮廓光
   return env;
 }
 
@@ -168,7 +168,7 @@ ssaoPass.maxDistance = 0.012;
 // 触屏设备算力有限，只保留 Bloom，避免掉帧
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
 ssaoPass.enabled = !isTouch;
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(postSize.x, postSize.y), 0.34, 0.55, 0.92);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(postSize.x, postSize.y), 0.18, 0.5, 0.94);
 const outputPass = new OutputPass();
 composer.addPass(renderPass);
 composer.addPass(ssaoPass);
@@ -333,12 +333,12 @@ function getMaterial(pc) {
     map: tex,
     metalness: metal,
     roughness: rough,
-    // 玻璃用少量清漆层提亮高光，避免整块玻璃被柔光箱照成一片白
-    clearcoat: pc.gl ? 0.25 : (cutout ? 0 : shiny ? 1 : 0),
-    clearcoatRoughness: pc.gl ? 0.1 : shiny ? 0.1 : 0.28,
-    // 徽标/字标压低高光和环境反射，避免被头顶柔光箱照成一片白
-    specularIntensity: pc.gl ? 0.55 : (cutout ? 0.35 : 1),
-    envMapIntensity: pc.gl ? 0.45 : (cutout ? 0.5 : 0.85),
+    // 玻璃只留一点清漆高光，避免整块玻璃被柔光箱照成一片白
+    clearcoat: pc.gl ? 0.12 : (cutout ? 0 : shiny ? 0.3 : 0),
+    clearcoatRoughness: pc.gl ? 0.24 : shiny ? 0.4 : 0.45,
+    // 徽标/字标压低高光，车身漆面也收敛到接近真实车漆的反射强度
+    specularIntensity: pc.gl ? 0.45 : (cutout ? 0.3 : 0.55),
+    envMapIntensity: pc.gl ? 0.2 : (cutout ? 0.3 : 0.22),
     transparent: !cutout && (!!pc.gl || opacity < 1),
     alphaTest: cutout ? 0.4 : 0,
     opacity,
