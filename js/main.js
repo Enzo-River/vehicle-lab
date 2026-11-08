@@ -488,7 +488,8 @@ function getGeometry(pc) {
     case 'arch': geo = new THREE.TorusGeometry(pc.s[0], pc.s[1], 8, 20, Math.PI); break;
     case 'box': {
       const min = Math.min(pc.s[0], pc.s[1], pc.s[2]);
-      const r = Math.min(0.1, min * 0.26);
+      // 钣金件保留硬边：倒角半径压到 4.5cm 以内，避免整体变成圆滚滚的塑料玩具
+      const r = pc.bevel != null ? pc.bevel : Math.min(0.045, min * 0.18);
       geo = r > 0.004 ? roundedBox(pc.s[0], pc.s[1], pc.s[2], r) : new THREE.BoxGeometry(pc.s[0], pc.s[1], pc.s[2]);
       break;
     }

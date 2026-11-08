@@ -91,6 +91,46 @@ export function tailLamp(x, y, z, w = 0.34, h = 0.12, o = {}) {
   ];
 }
 
+// 车底结构：地板、门槛梁、副车架、传动轴、排气、油箱与下摆臂
+// 让车底不再是一块随便塞进去的薄板，从侧下方看也有完整的机械结构
+export function underbody(o = {}) {
+  const {
+    hw = 0.86,      // 车身半宽
+    y = 0.3,        // 地板高度
+    zf = 1.42,      // 前轴位置
+    zr = -1.42,     // 后轴位置
+    z0 = -2.0,      // 车尾内缘
+    z1 = 2.0        // 车头内缘
+  } = o;
+  const mid = (zf + zr) / 2;
+  const span = Math.abs(z1 - z0);
+  const out = [
+    // 地板总成
+    box(hw * 1.44, 0.055, span * 0.8, 0x1b2027, 0, y - 0.03, mid),
+    // 两侧门槛梁（下边梁），车身侧面的底边靠它收口
+    box(0.11, 0.13, span * 0.74, 0x2a3038, -hw * 0.92, y + 0.02, mid),
+    box(0.11, 0.13, span * 0.74, 0x2a3038, hw * 0.92, y + 0.02, mid),
+    // 中央传动通道
+    box(0.36, 0.11, span * 0.6, 0x232830, 0, y + 0.07, mid),
+    // 前后副车架横梁
+    box(hw * 1.66, 0.1, 0.17, 0x2a3038, 0, y + 0.02, zf - 0.1),
+    box(hw * 1.66, 0.1, 0.17, 0x2a3038, 0, y + 0.02, zr + 0.1),
+    // 传动轴
+    cyl(0.055, 0.055, Math.abs(zf - zr) * 0.92, 0x8f969e, 0, y, mid,
+      { r: [Math.PI / 2, 0, 0], seg: 14, metal: 0.7, rough: 0.3 }),
+    // 排气管与消音器
+    cyl(0.045, 0.045, span * 0.86, 0x8a9098, -hw * 0.4, y - 0.02, mid,
+      { r: [Math.PI / 2, 0, 0], seg: 12, metal: 0.75, rough: 0.35 }),
+    box(0.3, 0.13, 0.46, 0x9aa4ad, -hw * 0.4, y - 0.02, zr + 0.3, { metal: 0.6, rough: 0.4 }),
+    // 燃油箱
+    box(0.44, 0.15, 0.52, 0x3a3f45, hw * 0.44, y + 0.01, zr + 0.52),
+    // 四轮下摆臂，把车轮和副车架连起来
+    ...[-1, 1].flatMap((sx) => [zf, zr].map((z) => box(0.3, 0.07, 0.11, 0x3a3f45,
+      sx * hw * 0.72, y + 0.02, z, { metal: 0.35, rough: 0.55 })))
+  ];
+  return out;
+}
+
 // 一只车轮：轮胎 + 胎面花纹 + 轮辋 + 辐条 + 刹车盘，轴向沿 X 轴
 export function wheelSet(radius, width, rim = 0xd8d8d8, spokes = 5) {
   const ps = [

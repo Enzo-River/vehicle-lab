@@ -1,4 +1,4 @@
-import { C, box, cyl, tor, cone, fourWheels, hull, arch, glassPatch, lamp, tailLamp } from './common.js';
+import { C, box, cyl, tor, cone, fourWheels, hull, arch, glassPatch, lamp, tailLamp, underbody } from './common.js';
 
 // 座舱轮廓：车身与贴合玻璃共用
 const CAB_PICKUP = [
@@ -56,6 +56,7 @@ export const pickup = {
         box(1.68, 0.09, 0.16, 0x14181d, 0, 0.34, 2.33),
         box(1.72, 0.2, 0.16, 0x24262b, 0, 0.46, -2.4),                            // 后保险杠
         box(1.86, 0.08, 3.1, 0xca7620, 0, 0.4, 0.1),                             // 侧裙护板
+        ...underbody({ hw: 0.95, y: 0.36, zf: 1.5, zr: -1.5, z0: -2.35, z1: 2.3 }),
         // 大尺寸黑色格栅：镀铬外框 + 双横条 + 车标
         box(1.46, 0.3, 0.07, 0x12161a, 0, 0.66, 2.38, { tex: 'grille' }),
         box(1.54, 0.035, 0.05, 0x2f3338, 0, 0.83, 2.40, { metal: 0.7, rough: 0.3 }),
@@ -227,7 +228,7 @@ export const police = {
         box(0.15, 0.08, 0.1, 0x1b3a8f, 0.82, 1.0, 0.64),
         box(0.02, 0.06, 0.08, 0x2f5673, -0.895, 1.0, 0.64, { metal: 0.6, rough: 0.1 }),
         box(0.02, 0.06, 0.08, 0x2f5673, 0.895, 1.0, 0.64, { metal: 0.6, rough: 0.1 }),
-        box(1.74, 0.03, 0.14, 0x142c6e, 0, 0.3, 0),                                // 底盘
+        ...underbody({ hw: 0.86, y: 0.3, zf: 1.35, zr: -1.35, z0: -1.95, z1: 1.95 }),
         box(0.05, 0.36, 0.22, 0x24262b, -0.12, 0.42, 2.32),                         // 前推杠中间立柱
         box(0.05, 0.36, 0.22, 0x24262b, 0.12, 0.42, 2.32),
         // 车门警用涂装：白色条带 + 深蓝盾牌标识
