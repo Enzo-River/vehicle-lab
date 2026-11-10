@@ -384,7 +384,7 @@ function roundedBox(w, h, d, r) {
 
 // 放样车身：把一串横截面平滑地连起来，做出有弧度的车壳，而不是堆方块
 // sta: [z, 半宽, 半高, 中心高度]，横截面为超椭圆并带上下内收（tumble/tuck）
-function hullGeometry(sta, pow = 3.6, tumble = 0.16, tuck = 0.12, seg = 26) {
+function hullGeometry(sta, pow = 3.6, tumble = 0.16, tuck = 0.12, seg = 26, crease = 0) {
   const rings = sta.map(([z, a, b, cy]) => {
     const ring = [];
     for (let i = 0; i < seg; i++) {
@@ -426,7 +426,7 @@ function hullGeometry(sta, pow = 3.6, tumble = 0.16, tuck = 0.12, seg = 26) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  return geo;
+  return crease > 0 ? creasedNormals(geo, crease) : geo;
 }
 
 // 贴合车壳的曲面玻璃片：采样与 hull 相同的超椭圆横截面，只取其中一段
@@ -474,16 +474,67 @@ function glassGeometry(sta, z0, z1, u0, u1, pow = 3.6, tumble = 0.16, tuck = 0.1
   return geo;
 }
 
+// 折角法线：相邻面的夹角超过阈值就拆成硬边，小曲率的地方仍然保持平滑。
+// 工程机械的车壳靠它做出钣金折线，而不是一坨软绵绵的曲面。
+function creasedNormals(geo, crease) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  const pos = g.attributes.position;
+  const count = pos.count;
+  const normals = new Float32Array(count * 3);
+  const faceN = [];
+  const buckets = new Map();
+  const va = new THREE.Vector3();
+  const vb = new THREE.Vector3();
+  const vc = new THREE.Vector3();
+  const e1 = new THREE.Vector3();
+  const e2 = new THREE.Vector3();
+  const nv = new THREE.Vector3();
+  const acc = new THREE.Vector3();
+  const keyOf = (v) => pos.getX(v).toFixed(4) + ',' + pos.getY(v).toFixed(4) + ',' + pos.getZ(v).toFixed(4);
+  for (let t = 0; t < count / 3; t++) {
+    const i0 = t * 3;
+    va.fromBufferAttribute(pos, i0);
+    vb.fromBufferAttribute(pos, i0 + 1);
+    vc.fromBufferAttribute(pos, i0 + 2);
+    nv.crossVectors(e1.subVectors(vb, va), e2.subVectors(vc, va)).normalize();
+    faceN.push(nv.clone());
+    for (let k = 0; k < 3; k++) {
+      const v = i0 + k;
+      const kk = keyOf(v);
+      const bucket = buckets.get(kk);
+      if (bucket) bucket.push(t);
+      else buckets.set(kk, [t]);
+    }
+  }
+  for (let t = 0; t < count / 3; t++) {
+    const i0 = t * 3;
+    for (let k = 0; k < 3; k++) {
+      const v = i0 + k;
+      acc.set(0, 0, 0);
+      for (const o of buckets.get(keyOf(v))) {
+        if (faceN[o].dot(faceN[t]) >= crease) acc.add(faceN[o]);
+      }
+      acc.normalize();
+      const j = v * 3;
+      normals[j] = acc.x;
+      normals[j + 1] = acc.y;
+      normals[j + 2] = acc.z;
+    }
+  }
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  return g;
+}
+
 function getGeometry(pc) {
   const key = pc.g === 'hull'
-    ? 'hull:' + JSON.stringify([pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg])
+    ? 'hull:' + JSON.stringify([pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg, pc.crease])
     : pc.g === 'glass'
       ? 'glass:' + JSON.stringify([pc.sta, pc.z0, pc.z1, pc.u0, pc.u1, pc.pow, pc.tumble, pc.tuck, pc.segZ, pc.segU, pc.off])
       : pc.g + ':' + pc.s.join(',');
   if (geoCache.has(key)) return geoCache.get(key);
   let geo;
   switch (pc.g) {
-    case 'hull': geo = hullGeometry(pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg); break;
+    case 'hull': geo = hullGeometry(pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg, pc.crease || 0); break;
     case 'glass': geo = glassGeometry(pc.sta, pc.z0, pc.z1, pc.u0, pc.u1, pc.pow, pc.tumble, pc.tuck, pc.segZ, pc.segU, pc.off); break;
     case 'arch': geo = new THREE.TorusGeometry(pc.s[0], pc.s[1], 8, 20, Math.PI); break;
     case 'box': {
