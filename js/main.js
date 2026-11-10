@@ -335,7 +335,8 @@ function getMaterial(pc) {
     roughness: rough,
     // 玻璃只留一点清漆高光，避免整块玻璃被柔光箱照成一片白
     clearcoat: pc.gl ? 0.12 : (cutout ? 0 : shiny ? 0.3 : 0),
-    clearcoatRoughness: pc.gl ? 0.24 : shiny ? 0.4 : 0.45,
+    // 清漆层收紧：高光变窄变利，车身折线才会像喷过漆的钣金，而不是一团柔光
+    clearcoatRoughness: pc.gl ? 0.24 : shiny ? 0.16 : 0.45,
     // 徽标/字标压低高光，车身漆面也收敛到接近真实车漆的反射强度
     specularIntensity: pc.gl ? 0.45 : (cutout ? 0.3 : 0.55),
     envMapIntensity: pc.gl ? 0.2 : (cutout ? 0.3 : 0.22),
@@ -534,7 +535,8 @@ function getGeometry(pc) {
   if (geoCache.has(key)) return geoCache.get(key);
   let geo;
   switch (pc.g) {
-    case 'hull': geo = hullGeometry(pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg, pc.crease || 0); break;
+    // 默认给所有放样车身做折角：肩线、机盖边缘、腰线都硬起来，曲面本身仍平滑
+    case 'hull': geo = hullGeometry(pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg, pc.crease ?? 0.95); break;
     case 'glass': geo = glassGeometry(pc.sta, pc.z0, pc.z1, pc.u0, pc.u1, pc.pow, pc.tumble, pc.tuck, pc.segZ, pc.segU, pc.off); break;
     case 'arch': geo = new THREE.TorusGeometry(pc.s[0], pc.s[1], 8, 20, Math.PI); break;
     case 'box': {
