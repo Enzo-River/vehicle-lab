@@ -15,7 +15,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.86;
+renderer.toneMappingExposure = 0.9;
 renderer.domElement.style.display = 'block';
 renderer.domElement.style.touchAction = 'none';
 stage.appendChild(renderer.domElement);
@@ -75,11 +75,14 @@ function buildStudioEnvironment() {
     m.scale.set(sx, sy, sz);
     env.add(m);
   };
-  panel(9, [0, 15, 0], [11, 0.1, 7]);         // 顶部主柔光箱
-  panel(5, [-14, 7, 4], [0.1, 7, 9]);         // 左侧灯条
-  panel(4, [14, 6, -5], [0.1, 6, 8]);         // 右后侧灯条
-  panel(3, [0, 5, 15], [10, 4, 0.1]);         // 正前方补光
-  panel(2, [0, 2, -15], [10, 3, 0.1]);        // 车后轮廓光
+  panel(7, [0, 15, 0], [11, 0.1, 7]);          // 顶部主柔光箱
+  // 两条细长的顶部灯条：车漆和玻璃上会映出笔直的高光线，比均匀柔光更像真车
+  panel(11, [0, 15.2, 0], [0.4, 0.1, 13]);
+  panel(8, [-4.2, 15.1, 0], [0.35, 0.1, 11]);
+  panel(7, [-14, 7, 4], [0.1, 7, 13]);         // 左侧灯条
+  panel(6, [14, 6, -5], [0.1, 6, 10]);         // 右后侧灯条
+  panel(4, [0, 5, 15], [10, 4, 0.1]);          // 正前方补光
+  panel(2.5, [0, 2, -15], [10, 3, 0.1]);       // 车后轮廓光
   return env;
 }
 
@@ -316,36 +319,45 @@ function getTexture(kind) {
 const fritMat = new THREE.MeshStandardMaterial({ color: 0x0a0f14, roughness: 0.72, metalness: 0 });
 
 function getMaterial(pc) {
-  // 玻璃单独用更光滑、更通透的参数，看起来才像车窗
-  const metal = pc.metal !== undefined ? pc.metal : (pc.gl ? 0.08 : 0.28);
-  const rough = pc.rough !== undefined ? pc.rough : (pc.gl ? 0.07 : 0.5);
-  const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.8 : 1);
   const isHull = pc.g === 'hull';
   const tex = pc.tex ? getTexture(pc.tex) : null;
   // alpha 贴图（徽标、字标）用 alphaTest 抠形，免得透明边缘和车身抢深度
   const cutout = !!pc.alpha;
-  const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1, isHull ? 1 : 0, pc.tex || '', cutout ? 1 : 0].join('|');
+
+  // 判断这块零件是不是「喷过漆的车身钣金」：
+  // 没显式指定金属度/粗糙度、颜色不是深色橡胶/塑料，就是车漆。
+  // 车漆需要清漆层和强环境反射，黑塑料则需要哑光，靠这一条把两者分开。
+  const hex = typeof pc.c === 'number' ? pc.c : 0;
+  const lum = (0.299 * ((hex >> 16) & 255) + 0.587 * ((hex >> 8) & 255) + 0.114 * (hex & 255)) / 255;
+  const paint = !pc.gl && !tex && pc.metal === undefined && pc.rough === undefined && lum > 0.16;
+
+  // 车漆：金属基色 + 极薄清漆。玻璃：深色、高反射、低粗糙。
+  const metal = pc.metal !== undefined ? pc.metal : paint ? 0.52 : (pc.gl ? 0.3 : 0.28);
+  const rough = pc.rough !== undefined ? pc.rough : paint ? 0.3 : (pc.gl ? 0.035 : 0.55);
+  const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.86 : 1);
+  const clearcoat = pc.gl ? 0.6 : paint ? 1 : (pc.rough === undefined ? 0 : rough < 0.3 ? 0.3 : 0);
+  const ccRough = pc.gl ? 0.05 : paint ? 0.035 : 0.2;
+  // 反射强度：车漆、玻璃、亮面饰条让摄影棚灯条映出来，橡胶/塑料保持安静
+  const envI = pc.gl ? 1.1 : paint ? 0.76 : (metal > 0.7 || rough <= 0.25 ? 1.0 : 0.28);
+
+  const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1, isHull ? 1 : 0, pc.tex || '', cutout ? 1 : 0, paint ? 1 : 0, pc.g === 'lathe' ? 1 : 0].join('|');
   if (matCache.has(key)) return matCache.get(key);
-  // 车漆用物理材质加清漆层，反光更像真车；橡胶、玻璃不加
-  const shiny = !pc.gl && rough <= 0.62;
+
   const m = new THREE.MeshPhysicalMaterial({
     color: tex ? 0xffffff : pc.c,
     map: tex,
     metalness: metal,
     roughness: rough,
-    // 玻璃只留一点清漆高光，避免整块玻璃被柔光箱照成一片白
-    clearcoat: pc.gl ? 0.12 : (cutout ? 0 : shiny ? 0.3 : 0),
-    // 清漆层收紧：高光变窄变利，车身折线才会像喷过漆的钣金，而不是一团柔光
-    clearcoatRoughness: pc.gl ? 0.24 : shiny ? 0.16 : 0.45,
-    // 徽标/字标压低高光，车身漆面也收敛到接近真实车漆的反射强度
-    specularIntensity: pc.gl ? 0.45 : (cutout ? 0.3 : 0.55),
-    envMapIntensity: pc.gl ? 0.2 : (cutout ? 0.3 : 0.22),
+    clearcoat: cutout ? 0 : clearcoat,
+    clearcoatRoughness: ccRough,
+    specularIntensity: cutout ? 0.3 : (pc.gl ? 0.8 : paint ? 0.85 : 0.55),
+    envMapIntensity: cutout ? 0.35 : envI,
     transparent: !cutout && (!!pc.gl || opacity < 1),
     alphaTest: cutout ? 0.4 : 0,
     opacity,
     emissive: new THREE.Color(pc.e || 0x000000),
     emissiveIntensity: pc.ei || 1,
-    side: pc.gl || isHull ? THREE.DoubleSide : THREE.FrontSide,
+    side: pc.gl || isHull || pc.g === 'lathe' ? THREE.DoubleSide : THREE.FrontSide,
     depthWrite: pc.gl ? false : true
   });
   matCache.set(key, m);
@@ -385,7 +397,7 @@ function roundedBox(w, h, d, r) {
 
 // 放样车身：把一串横截面平滑地连起来，做出有弧度的车壳，而不是堆方块
 // sta: [z, 半宽, 半高, 中心高度]，横截面为超椭圆并带上下内收（tumble/tuck）
-function hullGeometry(sta, pow = 3.6, tumble = 0.16, tuck = 0.12, seg = 26, crease = 0) {
+function hullGeometry(sta, pow = 3.6, tumble = 0.16, tuck = 0.12, seg = 40, crease = 0) {
   const rings = sta.map(([z, a, b, cy]) => {
     const ring = [];
     for (let i = 0; i < seg; i++) {
@@ -431,7 +443,7 @@ function hullGeometry(sta, pow = 3.6, tumble = 0.16, tuck = 0.12, seg = 26, crea
 }
 
 // 贴合车壳的曲面玻璃片：采样与 hull 相同的超椭圆横截面，只取其中一段
-function glassGeometry(sta, z0, z1, u0, u1, pow = 3.6, tumble = 0.16, tuck = 0.12, segZ = 8, segU = 12, off = 0.006) {
+function glassGeometry(sta, z0, z1, u0, u1, pow = 3.6, tumble = 0.16, tuck = 0.12, segZ = 12, segU = 20, off = 0.006) {
   const sorted = [...sta].sort((a, b) => a[0] - b[0]);
   const prof = (z) => {
     const zz = Math.max(sorted[0][0], Math.min(sorted[sorted.length - 1][0], z));
@@ -531,14 +543,23 @@ function getGeometry(pc) {
     ? 'hull:' + JSON.stringify([pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg, pc.crease])
     : pc.g === 'glass'
       ? 'glass:' + JSON.stringify([pc.sta, pc.z0, pc.z1, pc.u0, pc.u1, pc.pow, pc.tumble, pc.tuck, pc.segZ, pc.segU, pc.off])
-      : pc.g + ':' + pc.s.join(',');
+      : pc.g === 'lathe'
+        ? 'lathe:' + JSON.stringify([pc.prof, pc.seg])
+        : pc.g + ':' + pc.s.join(',');
   if (geoCache.has(key)) return geoCache.get(key);
   let geo;
   switch (pc.g) {
     // 默认给所有放样车身做折角：肩线、机盖边缘、腰线都硬起来，曲面本身仍平滑
-    case 'hull': geo = hullGeometry(pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg, pc.crease ?? 0.95); break;
+    case 'hull': geo = hullGeometry(pc.sta, pc.pow, pc.tumble, pc.tuck, pc.seg, pc.crease ?? 0.976); break;
     case 'glass': geo = glassGeometry(pc.sta, pc.z0, pc.z1, pc.u0, pc.u1, pc.pow, pc.tumble, pc.tuck, pc.segZ, pc.segU, pc.off); break;
-    case 'arch': geo = new THREE.TorusGeometry(pc.s[0], pc.s[1], 8, 20, Math.PI); break;
+    case 'lathe': {
+      // 旋转成型：轮胎这种带圆弧胎肩的零件用剖面旋转，才有真实的胎侧鼓包
+      const pts = pc.prof.map(([r, y]) => new THREE.Vector2(r, y));
+      geo = new THREE.LatheGeometry(pts, Math.max(24, pc.seg || 48));
+      geo.rotateZ(Math.PI / 2);
+      break;
+    }
+    case 'arch': geo = new THREE.TorusGeometry(pc.s[0], pc.s[1], 12, 32, Math.PI); break;
     case 'box': {
       const min = Math.min(pc.s[0], pc.s[1], pc.s[2]);
       // 钣金件保留硬边：倒角半径压到 4.5cm 以内，避免整体变成圆滚滚的塑料玩具

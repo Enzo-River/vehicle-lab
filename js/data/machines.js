@@ -1,13 +1,13 @@
 import { C, box, cyl, tor, cone, fourWheels, wheelSet, hull as hullBase, arch, lamp, tailLamp } from './common.js';
 
-// 工程机械的钣金/铸造外壳：把放样截面压得更方，棱线更硬，
-// 避免机身像塑料玩具那样圆滚滚；需要圆弧的零件仍可显式传低 pow
+// 工程机械的钣金/铸造外壳：截面略方、棱线更硬，但保留铸造件的圆角，
+// 不能像塑料积木那样全直角；需要圆弧的零件仍可显式传低 pow
 const hull = (sta, color, o = {}) => hullBase(sta, color, {
   ...o,
-  pow: Math.max(o.pow ?? 0, 16),
-  tumble: Math.min(o.tumble ?? 0.02, 0.012),
-  tuck: Math.min(o.tuck ?? 0.02, 0.012),
-  crease: o.crease ?? 0.96
+  pow: Math.max(o.pow ?? 0, 10),
+  tumble: Math.min(o.tumble ?? 0.02, 0.035),
+  tuck: Math.min(o.tuck ?? 0.02, 0.035),
+  crease: o.crease ?? 0.978
 });
 
 /* —— 工程车通用构件 —— */

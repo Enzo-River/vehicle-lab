@@ -1,6 +1,6 @@
 // 通用颜色与几何零件小工具（纯数据，不依赖 three.js）
 export const C = {
-  glass: 0x1d3140,
+  glass: 0x101c26,
   rubber: 0x1c1c1c,
   dark: 0x24262b,
   steel: 0x9aa4ad,
@@ -131,47 +131,87 @@ export function underbody(o = {}) {
   return out;
 }
 
+// 旋转剖面零件（轮胎等）：prof 为 [[半径, 轴向坐标], ...]，绕轴旋转成实体
+export const lathe = (prof, color, x = 0, y = 0, z = 0, o = {}) =>
+  ({ g: 'lathe', prof, c: color, p: [x, y, z], s: [0, 0, 0], ...o });
+
 // 一只车轮：轮胎 + 胎面花纹 + 轮辋 + 辐条 + 刹车盘，轴向沿 X 轴
 export function wheelSet(radius, width, rim = 0xd8d8d8, spokes = 5) {
-  const ps = [
-    // 轮胎主体（橡胶，粗糙不反光）
-    cyl(radius, radius, width, 0x161616, 0, 0, 0, { r: [0, 0, Math.PI / 2], seg: 32, rough: 0.96, metal: 0.02 }),
-    // 两侧胎肩的圆角
-    tor(radius - 0.026, 0.028, 0x1b1b1b, width / 2 - 0.012, 0, 0, { r: [0, Math.PI / 2, 0], rough: 0.9, metal: 0.02 }),
-    tor(radius - 0.026, 0.028, 0x1b1b1b, -width / 2 + 0.012, 0, 0, { r: [0, Math.PI / 2, 0], rough: 0.9, metal: 0.02 }),
-    // 胎面花纹块
-    ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((i) => {
-      const a = (i / 16) * Math.PI * 2;
-      return box(width * 0.9, 0.028, 0.06, 0x101010, 0, Math.cos(a) * radius, Math.sin(a) * radius, {
-        r: [a, 0, 0], rough: 1, metal: 0
-      });
-    }),
+  const hw = width / 2;
+  const Rr = radius * 0.665;   // 轮辋半径：轮胎扁平比接近现代乘用车
+  const H = radius - Rr;       // 胎侧高度
+  const xf = hw * 0.84;        // 轮辋外端面，比胎侧略微内凹
+  const ps = [];
+
+  // 轮胎：剖面旋转成型，胎肩圆弧、胎侧鼓包、胎圈收口都有，不再是圆柱
+  const prof = [
+    [Rr, -hw * 0.78],
+    [Rr + H * 0.16, -hw * 0.96],
+    [Rr + H * 0.42, -hw * 1.0],
+    [Rr + H * 0.7, -hw * 0.94],
+    [Rr + H * 0.88, -hw * 0.78],
+    [radius - 0.02, -hw * 0.58],
+    [radius - 0.005, -hw * 0.3],
+    [radius, 0],
+    [radius - 0.005, hw * 0.3],
+    [radius - 0.02, hw * 0.58],
+    [Rr + H * 0.88, hw * 0.78],
+    [Rr + H * 0.7, hw * 0.94],
+    [Rr + H * 0.42, hw * 1.0],
+    [Rr + H * 0.16, hw * 0.96],
+    [Rr, hw * 0.78],
+    [Rr * 0.99, hw * 0.34],
+    [Rr * 0.99, -hw * 0.34]
   ];
-  // 轮胎两侧都是实心端面，轮辋必须贴在最外侧才能看见
+  ps.push(lathe(prof, 0x151515, 0, 0, 0, { seg: 56, rough: 0.95, metal: 0 }));
+
+  // 胎面花纹：两排交错的浅凸块，远看是细密的橡胶纹路
+  for (let i = 0; i < 26; i++) {
+    const a = (i / 26) * Math.PI * 2;
+    ps.push(box(width * 0.4, 0.008, 0.045, 0x0c0c0c,
+      -width * 0.24, Math.cos(a) * radius, Math.sin(a) * radius,
+      { r: [a, 0, 0], rough: 1, metal: 0 }));
+    ps.push(box(width * 0.4, 0.008, 0.045, 0x0c0c0c,
+      width * 0.24, Math.cos(a + 0.12) * radius, Math.sin(a + 0.12) * radius,
+      { r: [a + 0.12, 0, 0], rough: 1, metal: 0 }));
+  }
+
   [-1, 1].forEach((side) => {
-    const xFace = side * (width / 2 + 0.012);
-    // 深色轮辋底板（辐条之间的空隙就是它）
-    ps.push(cyl(radius * 0.58, radius * 0.58, 0.024, 0x0d0e10, xFace, 0, 0, {
-      r: [0, 0, Math.PI / 2], seg: 30, rough: 0.95, metal: 0
-    }));
-    // 轮辋外圈亮边
-    ps.push(tor(radius * 0.585, 0.02, rim, xFace + side * 0.012, 0, 0, {
-      r: [0, Math.PI / 2, 0], rough: 0.18, metal: 0.75
-    }));
-    // 辐条呈放射状，辐条之间能看到深色底板，才有铝合金轮圈的样子
+    const x = side * xf;
+    // 轮辋内桶：深色背板让辐条之间看进去是空的，不再是一块实心饼
+    ps.push(cyl(Rr * 0.84, Rr * 0.84, 0.02, 0x0d0e10, side * width * 0.22, 0, 0,
+      { r: [0, 0, Math.PI / 2], seg: 44, rough: 0.9, metal: 0.1 }));
+    // 轮辋外圈：一圈折边，铝圈的厚度感
+    ps.push(tor(Rr * 0.93, 0.026, rim, side * width * 0.36, 0, 0,
+      { r: [0, Math.PI / 2, 0], metal: 0.88, rough: 0.22 }));
+    // 轮辋外唇：亮面抛光的边缘
+    ps.push(tor(Rr * 0.9, 0.012, rim, x, 0, 0,
+      { r: [0, Math.PI / 2, 0], metal: 0.95, rough: 0.12 }));
+
+    // 刹车盘与卡钳：透过辐条能看到的机械细节
+    ps.push(cyl(Rr * 0.7, Rr * 0.7, 0.016, 0x8a9098, side * width * 0.28, 0, 0,
+      { r: [0, 0, Math.PI / 2], seg: 44, metal: 0.95, rough: 0.42 }));
+    ps.push(cyl(Rr * 0.28, Rr * 0.28, 0.03, 0x4a4f55, side * width * 0.3, 0, 0,
+      { r: [0, 0, Math.PI / 2], seg: 28, metal: 0.85, rough: 0.35 }));
+    ps.push(box(0.05, Rr * 0.3, Rr * 0.15, 0x8f3128,
+      side * width * 0.3, Math.cos(2.3) * Rr * 0.62, Math.sin(2.3) * Rr * 0.62,
+      { r: [2.3, 0, 0], metal: 0.35, rough: 0.5 }));
+
+    // 双辐条：一根主辐条拆成两片，中间留缝，才有现代铝合金轮圈的味道
     for (let i = 0; i < spokes; i++) {
       const a = (i / spokes) * Math.PI * 2;
-      ps.push(box(0.045, radius * 0.5, 0.06, rim,
-        xFace + side * 0.016, Math.cos(a) * radius * 0.34, Math.sin(a) * radius * 0.34,
-        { r: [a, 0, 0], metal: 0.62, rough: 0.24 }));
+      [-1, 1].forEach((k) => {
+        const d = k * 0.025;
+        ps.push(box(0.03, Rr * 0.58, 0.042, rim,
+          x, Math.cos(a) * Rr * 0.44 - Math.sin(a) * d, Math.sin(a) * Rr * 0.44 + Math.cos(a) * d,
+          { r: [a, 0, 0], metal: 0.86, rough: 0.2 }));
+      });
     }
-    // 中心轮毂 + 轮毂盖
-    ps.push(cyl(radius * 0.2, radius * 0.2, 0.05, 0x9aa4ad, xFace + side * 0.02, 0, 0, {
-      r: [0, 0, Math.PI / 2], seg: 22, metal: 0.6, rough: 0.3
-    }));
-    ps.push(cyl(radius * 0.095, radius * 0.095, 0.06, 0x24262b, xFace + side * 0.024, 0, 0, {
-      r: [0, 0, Math.PI / 2], seg: 18, metal: 0.4, rough: 0.4
-    }));
+    // 中心轮毂与轮毂盖
+    ps.push(cyl(Rr * 0.24, Rr * 0.24, 0.055, 0x2b2e32, x, 0, 0,
+      { r: [0, 0, Math.PI / 2], seg: 28, metal: 0.75, rough: 0.3 }));
+    ps.push(cyl(Rr * 0.15, Rr * 0.15, 0.022, rim, side * (xf + 0.03), 0, 0,
+      { r: [0, 0, Math.PI / 2], seg: 24, metal: 0.92, rough: 0.14 }));
   });
   return ps;
 }
