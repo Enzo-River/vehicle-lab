@@ -165,15 +165,15 @@ export function wheelSet(radius, width, rim = 0xd8d8d8, spokes = 5) {
   ];
   ps.push(lathe(prof, 0x151515, 0, 0, 0, { seg: 56, rough: 0.95, metal: 0 }));
 
-  // 胎面花纹：两排交错的浅凸块，远看是细密的橡胶纹路
-  for (let i = 0; i < 26; i++) {
-    const a = (i / 26) * Math.PI * 2;
-    ps.push(box(width * 0.4, 0.008, 0.045, 0x0c0c0c,
-      -width * 0.24, Math.cos(a) * radius, Math.sin(a) * radius,
+  // 胎面花纹：细密的交错浅纹，避免一圈大凸块像越野胎
+  for (let i = 0; i < 34; i++) {
+    const a = (i / 34) * Math.PI * 2;
+    ps.push(box(width * 0.38, 0.004, 0.034, 0x0e0e0e,
+      -width * 0.235, Math.cos(a) * radius, Math.sin(a) * radius,
       { r: [a, 0, 0], rough: 1, metal: 0 }));
-    ps.push(box(width * 0.4, 0.008, 0.045, 0x0c0c0c,
-      width * 0.24, Math.cos(a + 0.12) * radius, Math.sin(a + 0.12) * radius,
-      { r: [a + 0.12, 0, 0], rough: 1, metal: 0 }));
+    ps.push(box(width * 0.38, 0.004, 0.034, 0x0e0e0e,
+      width * 0.235, Math.cos(a + 0.1) * radius, Math.sin(a + 0.1) * radius,
+      { r: [a + 0.1, 0, 0], rough: 1, metal: 0 }));
   }
 
   [-1, 1].forEach((side) => {

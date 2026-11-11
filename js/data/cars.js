@@ -1,26 +1,27 @@
 import { C, box, cyl, tor, cone, fourWheels, hull, arch, glassPatch, lamp, tailLamp, underbody } from './common.js';
 
 // 座舱轮廓：车身和贴合它的玻璃共用同一组截面
+// 半宽贴着下车身顶部收口，避免座舱像单独扣在车顶上的方盒子
 const CAB_SEDAN = [
-  [1.04, 0.56, 0.05, 0.94],
-  [0.88, 0.65, 0.15, 1.05],
-  [0.62, 0.71, 0.23, 1.13],
-  [0.25, 0.72, 0.255, 1.155],
-  [-0.3, 0.72, 0.255, 1.155],
-  [-0.75, 0.7, 0.24, 1.14],
-  [-1.0, 0.62, 0.17, 1.07],
-  [-1.14, 0.48, 0.06, 0.97]
+  [1.04, 0.74, 0.05, 0.94],
+  [0.88, 0.79, 0.15, 1.05],
+  [0.62, 0.83, 0.23, 1.13],
+  [0.25, 0.85, 0.255, 1.155],
+  [-0.3, 0.85, 0.255, 1.155],
+  [-0.75, 0.83, 0.24, 1.14],
+  [-1.0, 0.77, 0.17, 1.07],
+  [-1.14, 0.62, 0.06, 0.97]
 ];
 
 const CAB_SPORTS = [
-  [1.02, 0.50, 0.03, 0.84],
-  [0.82, 0.62, 0.11, 0.93],
-  [0.55, 0.69, 0.17, 1.00],
-  [0.15, 0.71, 0.20, 1.04],
-  [-0.35, 0.71, 0.20, 1.04],
-  [-0.75, 0.68, 0.17, 1.00],
-  [-1.02, 0.60, 0.11, 0.93],
-  [-1.20, 0.48, 0.03, 0.86]
+  [1.02, 0.60, 0.03, 0.84],
+  [0.82, 0.72, 0.11, 0.93],
+  [0.55, 0.78, 0.17, 1.00],
+  [0.15, 0.84, 0.20, 1.04],
+  [-0.35, 0.84, 0.20, 1.04],
+  [-0.75, 0.80, 0.17, 1.00],
+  [-1.02, 0.72, 0.11, 0.93],
+  [-1.20, 0.56, 0.03, 0.86]
 ];
 
 const CAB_SUV = [
@@ -100,14 +101,15 @@ export const sedan = {
         box(0.5, 0.028, 0.02, 0xff3030, 0, 0.63, -2.19, { e: 0xff2424, ei: 0.4 }),   // 贯穿式尾灯
         box(0.16, 0.035, 0.06, 0x24579f, -0.8, 0.85, 0.1),                        // 隐藏式门把手
         box(0.16, 0.035, 0.06, 0x24579f, 0.8, 0.85, 0.1),
-        // 全景玻璃车顶：高光深色玻璃，贴合车顶弧面
-        box(0.8, 0.016, 0.36, 0x0a1218, 0, 1.387, 0.44, { r: [0.13, 0, 0], rough: 0.07, metal: 0.25 }),
-        box(0.8, 0.016, 0.5, 0x0a1218, 0, 1.415, -0.02, { rough: 0.07, metal: 0.25 }),
-        box(0.8, 0.016, 0.4, 0x0a1218, 0, 1.399, -0.55, { r: [-0.07, 0, 0], rough: 0.07, metal: 0.25 }),
-        box(0.16, 0.07, 0.14, 0x2f6fd0, -0.78, 1.0, 0.64),                       // 后视镜
-        box(0.16, 0.07, 0.14, 0x2f6fd0, 0.78, 1.0, 0.64),
-        box(0.02, 0.05, 0.1, 0x2f5673, -0.87, 1.0, 0.64, { metal: 0.6, rough: 0.1 }),
-        box(0.02, 0.05, 0.1, 0x2f5673, 0.87, 1.0, 0.64, { metal: 0.6, rough: 0.1 }),
+        // 全景玻璃车顶：直接贴着车顶曲面的玻璃面，四周由 frit 黑边收口，不再是一块凸起的黑板
+        glassPatch(CAB_SEDAN, C.glass, { z0: -0.72, z1: 0.5, u0: Math.PI / 2 - 0.86, u1: Math.PI / 2 + 0.86, pow: 5.2, tumble: 0.24, tuck: 0.06, off: 0.004 }),
+        // 后视镜：镜壳 + 支杆，镜片朝后
+        box(0.17, 0.075, 0.15, 0x2f6fd0, -0.845, 1.0, 0.64),
+        box(0.17, 0.075, 0.15, 0x2f6fd0, 0.845, 1.0, 0.64),
+        box(0.05, 0.032, 0.05, 0x24579f, -0.80, 0.99, 0.675),
+        box(0.05, 0.032, 0.05, 0x24579f, 0.80, 0.99, 0.675),
+        box(0.115, 0.052, 0.014, 0x141c24, -0.845, 1.0, 0.558, { metal: 0.6, rough: 0.06 }),
+        box(0.115, 0.052, 0.014, 0x141c24, 0.845, 1.0, 0.558, { metal: 0.6, rough: 0.06 }),
         ...underbody({ hw: 0.86, y: 0.3, zf: 1.35, zr: -1.35, z0: -1.95, z1: 1.95 }),
         // 品牌标识：车头引擎盖上的大号圆形徽标（镀铬外圈 + 深蓝底 + 银色 V 字）
         cyl(0.095, 0.095, 0.016, 0xffffff, 0, 0.803, 1.85, { tex: 'badge', alpha: 1, r: [0.21, Math.PI / 2, 0], seg: 40, metal: 0.2, rough: 0.45 }),
@@ -149,10 +151,10 @@ export const sedan = {
         // 玻璃直接贴着座舱曲面裁出来：前/后挡风、四门侧窗
         glassPatch(CAB_SEDAN, C.glass, { z0: 0.63, z1: 1.01, u0: Math.PI / 2 - 0.72, u1: Math.PI / 2 + 0.72, pow: 5.2, tumble: 0.24, tuck: 0.06 }),  // 前挡风
         glassPatch(CAB_SEDAN, C.glass, { z0: -1.13, z1: -0.77, u0: Math.PI / 2 - 0.72, u1: Math.PI / 2 + 0.72, pow: 5.2, tumble: 0.24, tuck: 0.06 }), // 后挡风
-        glassPatch(CAB_SEDAN, C.glass, { z0: 0.02, z1: 0.92, u0: Math.PI - 0.30, u1: Math.PI + 0.30, pow: 5.2, tumble: 0.24, tuck: 0.06 }),         // 左前侧窗
-        glassPatch(CAB_SEDAN, C.glass, { z0: 0.02, z1: 0.92, u0: 0.30, u1: -0.30, pow: 5.2, tumble: 0.24, tuck: 0.06 }),                            // 右前侧窗
-        glassPatch(CAB_SEDAN, C.glass, { z0: -1.02, z1: -0.34, u0: Math.PI - 0.30, u1: Math.PI + 0.30, pow: 5.2, tumble: 0.24, tuck: 0.06 }),        // 左后侧窗
-        glassPatch(CAB_SEDAN, C.glass, { z0: -1.02, z1: -0.34, u0: 0.30, u1: -0.30, pow: 5.2, tumble: 0.24, tuck: 0.06 })                           // 右后侧窗
+        glassPatch(CAB_SEDAN, C.glass, { z0: 0.02, z1: 0.92, u0: Math.PI - 0.33, u1: Math.PI + 0.33, pow: 5.2, tumble: 0.24, tuck: 0.06 }),         // 左前侧窗
+        glassPatch(CAB_SEDAN, C.glass, { z0: 0.02, z1: 0.92, u0: 0.33, u1: -0.33, pow: 5.2, tumble: 0.24, tuck: 0.06 }),                            // 右前侧窗
+        glassPatch(CAB_SEDAN, C.glass, { z0: -1.02, z1: -0.16, u0: Math.PI - 0.33, u1: Math.PI + 0.33, pow: 5.2, tumble: 0.24, tuck: 0.06 }),        // 左后侧窗
+        glassPatch(CAB_SEDAN, C.glass, { z0: -1.02, z1: -0.16, u0: 0.33, u1: -0.33, pow: 5.2, tumble: 0.24, tuck: 0.06 })                           // 右后侧窗
       ]
     },
     {
@@ -246,7 +248,7 @@ export const sports = {
           [2.28, 0.72, 0.17, 0.48]
         ], 0xd22b2b, { tumble: 0.14, tuck: 0.2, pow: 4.4 }),
         // 座舱：贴合车身的低矮玻璃舱，车顶微微拱起
-        hull(CAB_SPORTS, 0xd22b2b, { tumble: 0.16, tuck: 0.04, pow: 5.0 }),
+        hull(CAB_SPORTS, 0xd22b2b, { tumble: 0.24, tuck: 0.04, pow: 5.0 }),
         // 前保险杠：车身色上沿 + 黑色下唇 + 大尺寸前进气口 + 前铲
         box(1.88, 0.14, 0.16, 0xd22b2b, 0, 0.37, 2.23),
         box(1.78, 0.06, 0.16, 0x14181d, 0, 0.28, 2.25),
@@ -264,12 +266,12 @@ export const sports = {
         box(1.72, 0.06, 2.4, 0x8f1d1d, 0, 0.33, 0),                              // 侧裙
         ...[-0.58, 0.58].flatMap((x) => tailLamp(x, 0.58, -2.22, 0.34, 0.09)),
         box(0.5, 0.028, 0.02, 0xff3030, 0, 0.58, -2.265, { e: 0xff2424, ei: 0.45 }),
-        box(0.04, 0.04, 0.12, 0xd22b2b, -0.72, 1.0, 0.6),                        // 后视镜
-        box(0.04, 0.04, 0.12, 0xd22b2b, 0.72, 1.0, 0.6),
-        box(0.15, 0.08, 0.1, 0xd22b2b, -0.82, 1.0, 0.6),
-        box(0.15, 0.08, 0.1, 0xd22b2b, 0.82, 1.0, 0.6),
-        box(0.02, 0.06, 0.08, 0x2f5673, -0.895, 1.0, 0.6, { metal: 0.6, rough: 0.1 }),
-        box(0.02, 0.06, 0.08, 0x2f5673, 0.895, 1.0, 0.6, { metal: 0.6, rough: 0.1 }),
+        box(0.04, 0.04, 0.12, 0xd22b2b, -0.80, 1.0, 0.6),                        // 后视镜支杆
+        box(0.04, 0.04, 0.12, 0xd22b2b, 0.80, 1.0, 0.6),
+        box(0.16, 0.08, 0.1, 0xd22b2b, -0.855, 1.0, 0.6),
+        box(0.16, 0.08, 0.1, 0xd22b2b, 0.855, 1.0, 0.6),
+        box(0.11, 0.055, 0.014, 0x141c24, -0.855, 1.0, 0.542, { metal: 0.6, rough: 0.06 }),
+        box(0.11, 0.055, 0.014, 0x141c24, 0.855, 1.0, 0.542, { metal: 0.6, rough: 0.06 }),
         box(0.14, 0.04, 0.05, 0xc9ced4, -0.865, 0.78, -0.1),                     // 门把手
         box(0.14, 0.04, 0.05, 0xc9ced4, 0.865, 0.78, -0.1),
         ...underbody({ hw: 0.9, y: 0.26, zf: 1.4, zr: -1.4, z0: -1.9, z1: 2.0 }),
@@ -306,10 +308,10 @@ export const sports = {
       desc: '低矮的车窗让车身更顺滑，也方便看清外面。',
       tip: '跑车玻璃常常很斜，是为了顺着风的方向。',
       pieces: [
-        glassPatch(CAB_SPORTS, C.glass, { z0: 0.56, z1: 1.0, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.16, tuck: 0.04 }),   // 大倾角前挡风
-        glassPatch(CAB_SPORTS, C.glass, { z0: -1.19, z1: -0.77, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.16, tuck: 0.04 }), // 后挡风
-        glassPatch(CAB_SPORTS, C.glass, { z0: -0.75, z1: 0.45, u0: Math.PI - 0.26, u1: Math.PI + 0.26, pow: 5.0, tumble: 0.16, tuck: 0.04 }),        // 左侧窗
-        glassPatch(CAB_SPORTS, C.glass, { z0: -0.75, z1: 0.45, u0: 0.26, u1: -0.26, pow: 5.0, tumble: 0.16, tuck: 0.04 })                          // 右侧窗
+        glassPatch(CAB_SPORTS, C.glass, { z0: 0.56, z1: 1.0, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.24, tuck: 0.04 }),   // 大倾角前挡风
+        glassPatch(CAB_SPORTS, C.glass, { z0: -1.19, z1: -0.77, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.24, tuck: 0.04 }), // 后挡风
+        glassPatch(CAB_SPORTS, C.glass, { z0: -0.75, z1: 0.45, u0: Math.PI - 0.35, u1: Math.PI + 0.35, pow: 5.0, tumble: 0.24, tuck: 0.04 }),        // 左侧窗
+        glassPatch(CAB_SPORTS, C.glass, { z0: -0.75, z1: 0.45, u0: 0.35, u1: -0.35, pow: 5.0, tumble: 0.24, tuck: 0.04 })                          // 右侧窗
       ]
     },
     {
@@ -407,7 +409,7 @@ export const suv = {
           [2.30, 0.74, 0.30, 0.62]
         ], 0x3b7d52, { tumble: 0.14, tuck: 0.16, pow: 4.6 }),
         // 座舱：高大圆润的车厢，尾门一直延伸到后保险杠
-        hull(CAB_SUV, 0x3b7d52, { tumble: 0.1, tuck: 0.04, pow: 5.0 }),
+        hull(CAB_SUV, 0x3b7d52, { tumble: 0.18, tuck: 0.04, pow: 5.0 }),
         // 前保险杠：车身色主体 + 黑色下护板 + 金属防刮板 + 雾灯
         box(1.82, 0.22, 0.20, 0x3b7d52, 0, 0.46, 2.23),
         box(1.72, 0.09, 0.18, 0x14181d, 0, 0.33, 2.27),
@@ -481,12 +483,12 @@ export const suv = {
       desc: '大大的车窗，方便观察路况。',
       tip: '玻璃还贴了隔热膜，夏天不晒。',
       pieces: [
-        glassPatch(CAB_SUV, C.glass, { z0: 0.82, z1: 1.20, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.1, tuck: 0.04 }),  // 前挡风
-        glassPatch(CAB_SUV, C.glass, { z0: -2.12, z1: -1.83, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.1, tuck: 0.04 }), // 后挡风
-        glassPatch(CAB_SUV, C.glass, { z0: 0.06, z1: 0.78, u0: Math.PI - 0.28, u1: Math.PI + 0.28, pow: 5.0, tumble: 0.1, tuck: 0.04 }),         // 左前侧窗
-        glassPatch(CAB_SUV, C.glass, { z0: 0.06, z1: 0.78, u0: 0.28, u1: -0.28, pow: 5.0, tumble: 0.1, tuck: 0.04 }),                            // 右前侧窗
-        glassPatch(CAB_SUV, C.glass, { z0: -1.80, z1: -0.06, u0: Math.PI - 0.28, u1: Math.PI + 0.28, pow: 5.0, tumble: 0.1, tuck: 0.04 }),        // 左后侧窗
-        glassPatch(CAB_SUV, C.glass, { z0: -1.80, z1: -0.06, u0: 0.28, u1: -0.28, pow: 5.0, tumble: 0.1, tuck: 0.04 })                           // 右后侧窗
+        glassPatch(CAB_SUV, C.glass, { z0: 0.82, z1: 1.20, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.18, tuck: 0.04 }),  // 前挡风
+        glassPatch(CAB_SUV, C.glass, { z0: -2.12, z1: -1.83, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.18, tuck: 0.04 }), // 后挡风
+        glassPatch(CAB_SUV, C.glass, { z0: 0.06, z1: 0.78, u0: Math.PI - 0.32, u1: Math.PI + 0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 }),         // 左前侧窗
+        glassPatch(CAB_SUV, C.glass, { z0: 0.06, z1: 0.78, u0: 0.32, u1: -0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 }),                            // 右前侧窗
+        glassPatch(CAB_SUV, C.glass, { z0: -1.80, z1: -0.06, u0: Math.PI - 0.32, u1: Math.PI + 0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 }),        // 左后侧窗
+        glassPatch(CAB_SUV, C.glass, { z0: -1.80, z1: -0.06, u0: 0.32, u1: -0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 })                           // 右后侧窗
       ]
     },
     {

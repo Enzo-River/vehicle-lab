@@ -12,14 +12,14 @@ const CAB_PICKUP = [
 ];
 
 const CAB_POLICE = [
-  [1.04, 0.57, 0.05, 0.94],
-  [0.88, 0.66, 0.15, 1.05],
-  [0.62, 0.72, 0.23, 1.13],
-  [0.25, 0.73, 0.255, 1.155],
-  [-0.30, 0.73, 0.255, 1.155],
-  [-0.75, 0.71, 0.24, 1.14],
-  [-1.00, 0.63, 0.17, 1.07],
-  [-1.14, 0.49, 0.06, 0.97]
+  [1.04, 0.74, 0.05, 0.94],
+  [0.88, 0.79, 0.15, 1.05],
+  [0.62, 0.83, 0.23, 1.13],
+  [0.25, 0.85, 0.255, 1.155],
+  [-0.30, 0.85, 0.255, 1.155],
+  [-0.75, 0.83, 0.24, 1.14],
+  [-1.00, 0.77, 0.17, 1.07],
+  [-1.14, 0.62, 0.06, 0.97]
 ];
 
 // 皮卡
@@ -50,7 +50,7 @@ export const pickup = {
           [2.36, 0.80, 0.24, 0.66]
         ], 0xe28a2b, { tumble: 0.05, tuck: 0.1, pow: 6.5 }),
         // 双排驾驶室
-        hull(CAB_PICKUP, 0xe28a2b, { tumble: 0.09, tuck: 0.03, pow: 5.2 }),
+        hull(CAB_PICKUP, 0xe28a2b, { tumble: 0.14, tuck: 0.03, pow: 5.2 }),
         // 前保险杠：车身色 + 黑色下护板 + 金属防刮板
         box(1.78, 0.20, 0.18, 0xe28a2b, 0, 0.46, 2.30),
         box(1.68, 0.09, 0.16, 0x14181d, 0, 0.34, 2.33),
@@ -138,10 +138,12 @@ export const pickup = {
       desc: '挡风玻璃和侧窗保护驾驶员。',
       tip: '皮卡的玻璃面积比轿车小一些。',
       pieces: [
-        glassPatch(CAB_PICKUP, C.glass, { z0: 0.94, z1: 1.36, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.2, tumble: 0.09, tuck: 0.03 }), // 前挡风
+        glassPatch(CAB_PICKUP, C.glass, { z0: 0.94, z1: 1.36, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.2, tumble: 0.14, tuck: 0.03 }), // 前挡风
         box(1.14, 0.34, 0.04, C.glass, 0, 1.47, -0.45, { r: [0.06, 0, 0], gl: 1 }),   // 后挡风（驾驶室后壁）
-        glassPatch(CAB_PICKUP, C.glass, { z0: -0.40, z1: 1.28, u0: Math.PI - 0.28, u1: Math.PI + 0.28, pow: 5.2, tumble: 0.09, tuck: 0.03 }),    // 左侧窗
-        glassPatch(CAB_PICKUP, C.glass, { z0: -0.40, z1: 1.28, u0: 0.28, u1: -0.28, pow: 5.2, tumble: 0.09, tuck: 0.03 })                       // 右侧窗
+        glassPatch(CAB_PICKUP, C.glass, { z0: 0.32, z1: 1.26, u0: Math.PI - 0.32, u1: Math.PI + 0.32, pow: 5.2, tumble: 0.14, tuck: 0.03 }),       // 左前门侧窗
+        glassPatch(CAB_PICKUP, C.glass, { z0: 0.32, z1: 1.26, u0: 0.32, u1: -0.32, pow: 5.2, tumble: 0.14, tuck: 0.03 }),                          // 右前门侧窗
+        glassPatch(CAB_PICKUP, C.glass, { z0: -0.38, z1: 0.12, u0: Math.PI - 0.32, u1: Math.PI + 0.32, pow: 5.2, tumble: 0.14, tuck: 0.03 }),       // 左后侧窗
+        glassPatch(CAB_PICKUP, C.glass, { z0: -0.38, z1: 0.12, u0: 0.32, u1: -0.32, pow: 5.2, tumble: 0.14, tuck: 0.03 })                          // 右后侧窗
       ]
     },
     {
@@ -200,7 +202,7 @@ export const police = {
           [2.24, 0.76, 0.20, 0.55]
         ], 0x1b3a8f, { tumble: 0.1, tuck: 0.18, pow: 4.6 }),
         hull(CAB_POLICE, 0x1b3a8f, { tumble: 0.13, tuck: 0.06, pow: 5.2 }),
-        box(1.3, 0.04, 1.15, 0x1b1b1b, 0, 1.41, -0.12),                            // 黑色车顶
+        box(1.42, 0.04, 1.15, 0x1b1b1b, 0, 1.41, -0.12),                           // 黑色车顶
         box(1.62, 0.14, 3.4, 0xf2f4f8, 0, 0.52, 0),                              // 白色腰线
         // 前保险杠：车身色主体 + 黑色下唇 + 雾灯，推杠通过支架固定
         box(1.72, 0.15, 0.18, 0x1b3a8f, 0, 0.42, 2.18),
@@ -222,12 +224,12 @@ export const police = {
         box(0.34, 0.1, 0.02, 0xe8edf2, 0, 0.5, -2.25, { tex: 'plate' }),            // 后牌照
         box(0.16, 0.05, 0.05, 0xc9ced4, -0.82, 0.85, 0.1),                         // 门把手
         box(0.16, 0.05, 0.05, 0xc9ced4, 0.82, 0.85, 0.1),
-        box(0.04, 0.04, 0.12, 0x1b3a8f, -0.72, 1.0, 0.64),                         // 后视镜
-        box(0.04, 0.04, 0.12, 0x1b3a8f, 0.72, 1.0, 0.64),
-        box(0.15, 0.08, 0.1, 0x1b3a8f, -0.82, 1.0, 0.64),
-        box(0.15, 0.08, 0.1, 0x1b3a8f, 0.82, 1.0, 0.64),
-        box(0.02, 0.06, 0.08, 0x2f5673, -0.895, 1.0, 0.64, { metal: 0.6, rough: 0.1 }),
-        box(0.02, 0.06, 0.08, 0x2f5673, 0.895, 1.0, 0.64, { metal: 0.6, rough: 0.1 }),
+        box(0.05, 0.032, 0.05, 0x1b3a8f, -0.80, 0.99, 0.675),                       // 后视镜支杆
+        box(0.05, 0.032, 0.05, 0x1b3a8f, 0.80, 0.99, 0.675),
+        box(0.17, 0.075, 0.15, 0x1b3a8f, -0.845, 1.0, 0.64),                        // 后视镜
+        box(0.17, 0.075, 0.15, 0x1b3a8f, 0.845, 1.0, 0.64),
+        box(0.115, 0.052, 0.014, 0x141c24, -0.845, 1.0, 0.558, { metal: 0.6, rough: 0.06 }),
+        box(0.115, 0.052, 0.014, 0x141c24, 0.845, 1.0, 0.558, { metal: 0.6, rough: 0.06 }),
         ...underbody({ hw: 0.86, y: 0.3, zf: 1.35, zr: -1.35, z0: -1.95, z1: 1.95 }),
         box(0.05, 0.36, 0.22, 0x24262b, -0.12, 0.42, 2.32),                         // 前推杠中间立柱
         box(0.05, 0.36, 0.22, 0x24262b, 0.12, 0.42, 2.32),
@@ -263,10 +265,10 @@ export const police = {
       pieces: [
         glassPatch(CAB_POLICE, C.glass, { z0: 0.63, z1: 1.01, u0: Math.PI / 2 - 0.72, u1: Math.PI / 2 + 0.72, pow: 5.2, tumble: 0.13, tuck: 0.06 }),  // 前挡风
         glassPatch(CAB_POLICE, C.glass, { z0: -1.13, z1: -0.77, u0: Math.PI / 2 - 0.72, u1: Math.PI / 2 + 0.72, pow: 5.2, tumble: 0.13, tuck: 0.06 }), // 后挡风
-        glassPatch(CAB_POLICE, C.glass, { z0: 0.02, z1: 0.92, u0: Math.PI - 0.30, u1: Math.PI + 0.30, pow: 5.2, tumble: 0.13, tuck: 0.06 }),         // 左前侧窗
-        glassPatch(CAB_POLICE, C.glass, { z0: 0.02, z1: 0.92, u0: 0.30, u1: -0.30, pow: 5.2, tumble: 0.13, tuck: 0.06 }),                            // 右前侧窗
-        glassPatch(CAB_POLICE, C.glass, { z0: -1.02, z1: -0.34, u0: Math.PI - 0.30, u1: Math.PI + 0.30, pow: 5.2, tumble: 0.13, tuck: 0.06 }),        // 左后侧窗
-        glassPatch(CAB_POLICE, C.glass, { z0: -1.02, z1: -0.34, u0: 0.30, u1: -0.30, pow: 5.2, tumble: 0.13, tuck: 0.06 })                           // 右后侧窗
+        glassPatch(CAB_POLICE, C.glass, { z0: 0.02, z1: 0.92, u0: Math.PI - 0.33, u1: Math.PI + 0.33, pow: 5.2, tumble: 0.13, tuck: 0.06 }),         // 左前侧窗
+        glassPatch(CAB_POLICE, C.glass, { z0: 0.02, z1: 0.92, u0: 0.33, u1: -0.33, pow: 5.2, tumble: 0.13, tuck: 0.06 }),                            // 右前侧窗
+        glassPatch(CAB_POLICE, C.glass, { z0: -1.02, z1: -0.16, u0: Math.PI - 0.33, u1: Math.PI + 0.33, pow: 5.2, tumble: 0.13, tuck: 0.06 }),        // 左后侧窗
+        glassPatch(CAB_POLICE, C.glass, { z0: -1.02, z1: -0.16, u0: 0.33, u1: -0.33, pow: 5.2, tumble: 0.13, tuck: 0.06 })                           // 右后侧窗
       ]
     },
     {

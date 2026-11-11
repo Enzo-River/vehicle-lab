@@ -335,10 +335,10 @@ function getMaterial(pc) {
   const metal = pc.metal !== undefined ? pc.metal : paint ? 0.52 : (pc.gl ? 0.3 : 0.28);
   const rough = pc.rough !== undefined ? pc.rough : paint ? 0.3 : (pc.gl ? 0.035 : 0.55);
   const opacity = pc.op !== undefined ? pc.op : (pc.gl ? 0.86 : 1);
-  const clearcoat = pc.gl ? 0.6 : paint ? 1 : (pc.rough === undefined ? 0 : rough < 0.3 ? 0.3 : 0);
-  const ccRough = pc.gl ? 0.05 : paint ? 0.035 : 0.2;
+  const clearcoat = pc.gl ? 0.7 : paint ? 1 : (pc.rough === undefined ? 0 : rough < 0.3 ? 0.3 : 0);
+  const ccRough = pc.gl ? 0.045 : paint ? 0.035 : 0.2;
   // 反射强度：车漆、玻璃、亮面饰条让摄影棚灯条映出来，橡胶/塑料保持安静
-  const envI = pc.gl ? 1.1 : paint ? 0.76 : (metal > 0.7 || rough <= 0.25 ? 1.0 : 0.28);
+  const envI = pc.gl ? 1.35 : paint ? 0.76 : (metal > 0.7 || rough <= 0.25 ? 1.0 : 0.28);
 
   const key = [pc.c, metal, rough, pc.gl ? 1 : 0, opacity, pc.e || 0, pc.ei || 1, isHull ? 1 : 0, pc.tex || '', cutout ? 1 : 0, paint ? 1 : 0, pc.g === 'lathe' ? 1 : 0].join('|');
   if (matCache.has(key)) return matCache.get(key);
