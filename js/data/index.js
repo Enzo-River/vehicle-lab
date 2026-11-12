@@ -12,8 +12,14 @@ import { laddertruck, snowplow, sewagetruck } from './special3.js';
 import { grader, coldplaner, crawlercrane } from './machines4.js';
 import { flatbed, midaxle, posttruck } from './trucks4.js';
 import { baler, farmtruck, transplanter } from './farm2.js';
+import { hatchback, wagon, convertible, mpv } from './cars4.js';
+import { coach, minibus, trolleybus, cashvan, commandtruck, foodtruck } from './special4.js';
+import { guardrailcleaner, dusttruck, rescuetruck } from './special5.js';
+import { curtainsider, lowboy, bulker, lighttruck } from './trucks5.js';
+import { telehandler, miniexcavator, piledriver, asphaltdistributor, soilstabilizer, linepump } from './machines5.js';
+import { rotarytiller, cottonpicker, canecutter, orchardtruck, crawlertractor } from './farm3.js';
 
-export const VEHICLES = [sedan, sports, suv, pickup, minivan, boxtruck, semitruck, containertruck, cartransporter, reeftruck, towtruck, doublebus, schoolbus, rv, bus, police, firetruck, ambulance, laddertruck, snowplow, sewagetruck, watertruck, garbagetruck, sweeper, tankertruck, posttruck, flatbed, midaxle, excavator, backhoe, bulldozer, crane, crawlercrane, concretepump, mixer, loader, skidsteer, forklift, boomlift, roller, grader, coldplaner, dumper, tractor, seeder, combine, sprayer, baler, farmtruck, transplanter, asphaltpaver, rotarydrill, truckcrane];
+export const VEHICLES = [sedan, sports, suv, pickup, minivan, boxtruck, semitruck, containertruck, cartransporter, reeftruck, towtruck, doublebus, schoolbus, rv, bus, police, firetruck, ambulance, laddertruck, snowplow, sewagetruck, watertruck, garbagetruck, sweeper, tankertruck, posttruck, flatbed, midaxle, excavator, backhoe, bulldozer, crane, crawlercrane, concretepump, mixer, loader, skidsteer, forklift, boomlift, roller, grader, coldplaner, dumper, tractor, seeder, combine, sprayer, baler, farmtruck, transplanter, asphaltpaver, rotarydrill, truckcrane, hatchback, wagon, convertible, mpv, coach, minibus, trolleybus, cashvan, commandtruck, foodtruck, guardrailcleaner, dusttruck, rescuetruck, curtainsider, lowboy, bulker, lighttruck, telehandler, miniexcavator, piledriver, asphaltdistributor, soilstabilizer, linepump, rotarytiller, cottonpicker, canecutter, orchardtruck, crawlertractor];
 
 export const CATEGORIES = ['家用车', '特种车', '工程车', '农用车'];
 
