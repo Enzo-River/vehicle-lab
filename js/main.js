@@ -11,7 +11,10 @@ import { VEHICLES, CATEGORIES, CATEGORY_META } from './data/index.js';
 const stage = document.getElementById('canvas-wrap');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+// 触屏设备算力有限：像素比上限再压一档
+const isTouch = window.matchMedia('(pointer: coarse)').matches;
+const MAX_PIXEL_RATIO = isTouch ? 1.5 : 1.75;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -44,7 +47,7 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.08));
 const sun = new THREE.DirectionalLight(0xfff6e8, 2.35);
 sun.position.set(9, 14, 8);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.camera.left = -11;
 sun.shadow.camera.right = 11;
 sun.shadow.camera.top = 13;
@@ -153,6 +156,12 @@ contactShadow.renderOrder = 1;
 scene.add(contactShadow);
 
 /* ---------------- 后处理：SSAO 环境光遮蔽 + Bloom 灯光辉光 ---------------- */
+// 画质档位：默认「流畅模式」——单台车 + 展台的场景里 SSAO 收益很小，
+// 但要多渲两遍几何体；顶栏按钮可切回精细画质。
+let highQuality = false;
+const composerRatio = () =>
+  Math.min(renderer.getPixelRatio(), highQuality ? 1.5 : isTouch ? 1 : 1.25);
+
 // 4x MSAA 的离屏缓冲，后处理链路里也能保持边缘平滑
 const postSize = new THREE.Vector2();
 renderer.getSize(postSize);
@@ -160,7 +169,7 @@ const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(postSi
   type: THREE.HalfFloatType,
   samples: 4
 }));
-composer.setPixelRatio(Math.min(renderer.getPixelRatio(), 1.5));
+composer.setPixelRatio(composerRatio());
 composer.setSize(postSize.x, postSize.y);
 
 const renderPass = new RenderPass(scene, camera);
@@ -168,15 +177,26 @@ const ssaoPass = new SSAOPass(scene, camera, postSize.x, postSize.y);
 ssaoPass.kernelRadius = 0.45;
 ssaoPass.minDistance = 0.0003;
 ssaoPass.maxDistance = 0.012;
-// 触屏设备算力有限，只保留 Bloom，避免掉帧
-const isTouch = window.matchMedia('(pointer: coarse)').matches;
-ssaoPass.enabled = !isTouch;
+ssaoPass.enabled = false;
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(postSize.x, postSize.y), 0.18, 0.5, 0.94);
 const outputPass = new OutputPass();
 composer.addPass(renderPass);
 composer.addPass(ssaoPass);
 composer.addPass(bloomPass);
 composer.addPass(outputPass);
+
+function applyQuality(on) {
+  highQuality = on;
+  ssaoPass.enabled = on;
+  composer.setPixelRatio(composerRatio());
+  const sz = renderer.getSize(new THREE.Vector2());
+  composer.setSize(sz.x, sz.y);
+  const btn = document.getElementById('btn-quality');
+  if (btn) {
+    btn.textContent = on ? '✨ 精细画质' : '⚡ 流畅模式';
+    btn.setAttribute('aria-pressed', String(on));
+  }
+}
 
 /* ---------------- 材质与几何缓存 ---------------- */
 const matCache = new Map();
@@ -364,7 +384,22 @@ function getMaterial(pc) {
   return m;
 }
 
+// 几何体缓存：按最近使用顺序淘汰的 LRU。
+// 合并不是所有零件都能做，单件材质仍会直接引用缓存里的几何体；
+// 加个上限，免得把整个车库逛一遍后几千份几何体全堆在内存里。
+const GEO_CACHE_MAX = 240;
 const geoCache = new Map();
+// 被淘汰时还挂在车上的几何体不能立刻 dispose，等切车时引用归零再释放
+const geoParked = new Set();
+
+function pruneGeoCache() {
+  for (const [key, geo] of geoCache) {
+    if (geoCache.size <= GEO_CACHE_MAX) break;
+    geoCache.delete(key);
+    if ((geo.userData.live || 0) > 0) geoParked.add(geo);
+    else geo.dispose();
+  }
+}
 
 // 圆角方块：把方盒的棱角收圆，车身就不会像纸盒
 function roundedBox(w, h, d, r) {
@@ -546,7 +581,13 @@ function getGeometry(pc) {
       : pc.g === 'lathe'
         ? 'lathe:' + JSON.stringify([pc.prof, pc.seg])
         : pc.g + ':' + pc.s.join(',');
-  if (geoCache.has(key)) return geoCache.get(key);
+  const cached = geoCache.get(key);
+  if (cached) {
+    // 命中后挪到队尾，让 Map 的遍历顺序始终等于「最久未用 → 最近用」
+    geoCache.delete(key);
+    geoCache.set(key, cached);
+    return cached;
+  }
   let geo;
   switch (pc.g) {
     // 默认给所有放样车身做折角：肩线、机盖边缘、腰线都硬起来，曲面本身仍平滑
@@ -574,6 +615,41 @@ function getGeometry(pc) {
     default: geo = new THREE.BoxGeometry(1, 1, 1);
   }
   geoCache.set(key, geo);
+  return geo;
+}
+
+// 把同一零件里材质相同的小网格合并成一份几何体。
+// 一辆车里六成以上的网格是轮胎花纹、螺栓这类小方块，
+// 合并后每帧的 draw call 能降到原来的十分之一，外观完全不变。
+function mergePieces(items) {
+  const pos = [];
+  const norm = [];
+  const uv = [];
+  const withUv = items.every((it) => !!it.geo.attributes.uv);
+  const v = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  const nm = new THREE.Matrix3();
+  items.forEach((it) => {
+    const src = it.geo.index ? it.geo.toNonIndexed() : it.geo;
+    const gp = src.attributes.position;
+    const gn = src.attributes.normal;
+    const gu = src.attributes.uv;
+    nm.getNormalMatrix(it.matrix);
+    for (let i = 0; i < gp.count; i++) {
+      v.fromBufferAttribute(gp, i).applyMatrix4(it.matrix);
+      pos.push(v.x, v.y, v.z);
+      n.fromBufferAttribute(gn, i).applyMatrix3(nm).normalize();
+      norm.push(n.x, n.y, n.z);
+      if (withUv) uv.push(gu.getX(i), gu.getY(i));
+    }
+    if (src !== it.geo) src.dispose();
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+  if (withUv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
   return geo;
 }
 
@@ -704,6 +780,21 @@ let baseCenterY = 1;
 
 function clearVehicle() {
   teardownRig();
+  parts.forEach((p) => {
+    // 合并出来的几何体和闪烁材质是本车独有的，切车时要回收；缓存里的共用资源不能动
+    p.flashMats.forEach((m) => m.dispose());
+    p.group.traverse((o) => {
+      if (!o.isMesh) return;
+      const geo = o.geometry;
+      // 合并出来的几何体独一份，直接释放；单件网格引用的是缓存，只减引用计数
+      if (o.userData.ownGeo) { geo.dispose(); return; }
+      geo.userData.live = Math.max(0, (geo.userData.live || 0) - 1);
+      if (geo.userData.live === 0 && geoParked.has(geo)) {
+        geoParked.delete(geo);
+        geo.dispose();
+      }
+    });
+  });
   vehicleRoot.children.slice().forEach((c) => { if (c !== markerRoot) vehicleRoot.remove(c); });
   while (markerRoot.children.length) {
     const m = markerRoot.children.pop();
@@ -722,33 +813,57 @@ function buildVehicle(def) {
     group.position.set(pd.pos[0], pd.pos[1], pd.pos[2]);
     group.userData.part = null;
 
+    // 同一零件里按材质分组，最后把组内的小网格合并成一个：
+    // 拆装动画都是按零件整体运动的，合并不影响任何交互
+    const buckets = new Map();
+    const collect = (pc, geo, mat, cast, recv) => {
+      const matrix = new THREE.Matrix4();
+      if (pc.r) matrix.makeRotationFromEuler(new THREE.Euler(pc.r[0], pc.r[1], pc.r[2]));
+      matrix.setPosition(pc.p[0], pc.p[1], pc.p[2]);
+      if (!buckets.has(mat)) buckets.set(mat, []);
+      buckets.get(mat).push({ pc, geo, mat, cast, recv, matrix });
+    };
+
     pd.pieces.forEach((pc) => {
-      const mesh = new THREE.Mesh(getGeometry(pc), getMaterial(pc));
-      mesh.position.set(pc.p[0], pc.p[1], pc.p[2]);
-      if (pc.r) mesh.rotation.set(pc.r[0], pc.r[1], pc.r[2]);
-      mesh.castShadow = !pc.gl;
-      mesh.receiveShadow = !pc.gl;
-      mesh.userData.baseY = mesh.position.y;
-      group.add(mesh);
+      collect(pc, getGeometry(pc), getMaterial(pc), !pc.gl, !pc.gl);
 
       // 曲面车窗外加一圈很窄的黑色密封边，像真车玻璃的 frit 边条
       if (pc.g === 'glass') {
         const dz = 0.022 * Math.sign(pc.z1 - pc.z0);
         const du = 0.026 * Math.sign(pc.u1 - pc.u0);
-        const frame = new THREE.Mesh(getGeometry({
+        const framePc = {
           ...pc,
           z0: pc.z0 - dz,
           z1: pc.z1 + dz,
           u0: pc.u0 - du,
           u1: pc.u1 + du,
           off: Math.max(0.0015, (pc.off ?? 0.006) - 0.0045)
-        }), fritMat);
-        frame.position.copy(mesh.position);
-        if (pc.r) frame.rotation.copy(mesh.rotation);
-        frame.castShadow = false;
-        frame.receiveShadow = false;
-        group.add(frame);
+        };
+        collect(framePc, getGeometry(framePc), fritMat, false, false);
       }
+    });
+
+    buckets.forEach((items, mat) => {
+      // 带贴图的材质要求每个几何体都有 uv，否则退回逐个建网格
+      if (items.length > 1 && (!mat.map || items.every((it) => !!it.geo.attributes.uv))) {
+        const mesh = new THREE.Mesh(mergePieces(items), mat);
+        mesh.castShadow = items[0].cast;
+        mesh.receiveShadow = items[0].recv;
+        mesh.userData.baseY = 0;
+        mesh.userData.ownGeo = true;
+        group.add(mesh);
+        return;
+      }
+      items.forEach((it) => {
+        it.geo.userData.live = (it.geo.userData.live || 0) + 1;
+        const mesh = new THREE.Mesh(it.geo, mat);
+        mesh.position.set(it.pc.p[0], it.pc.p[1], it.pc.p[2]);
+        if (it.pc.r) mesh.rotation.set(it.pc.r[0], it.pc.r[1], it.pc.r[2]);
+        mesh.castShadow = it.cast;
+        mesh.receiveShadow = it.recv;
+        mesh.userData.baseY = mesh.position.y;
+        group.add(mesh);
+      });
     });
 
     const part = {
@@ -828,6 +943,9 @@ function buildVehicle(def) {
       });
     }
   });
+
+  // 建完一台车再修剪缓存：此时哪些几何体还挂在车上已经确定，淘汰不会误伤
+  pruneGeoCache();
 
   // 记录整车尺寸，用于相机取景（不受零件散落影响）
   const vbb = new THREE.Box3().setFromObject(vehicleRoot);
@@ -1856,7 +1974,7 @@ function resize() {
   const h = stage.clientHeight;
   if (!w || !h) return;
   renderer.setSize(w, h);
-  composer.setPixelRatio(Math.min(renderer.getPixelRatio(), 1.5));
+  composer.setPixelRatio(composerRatio());
   composer.setSize(w, h);
   const prevAspect = camera.aspect;
   camera.aspect = w / h;
@@ -1882,6 +2000,7 @@ $('btn-reset').addEventListener('click', fitCamera);
 $('btn-principle').addEventListener('click', togglePrinciple);
 $('principle-close').addEventListener('click', hidePrinciple);
 $('card-close').addEventListener('click', hideCard);
+$('btn-quality').addEventListener('click', () => applyQuality(!highQuality));
 $('btn-sound').addEventListener('click', () => {
   soundOn = !soundOn;
   $('btn-sound').textContent = soundOn ? '🔊 音效' : '🔇 静音';
