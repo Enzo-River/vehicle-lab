@@ -14,7 +14,7 @@ const hull = (sta, color, o = {}) => hullBase(sta, color, {
 
 // 履带板：沿「跑道形」路径铺一圈，前后端是半圆，像真正的履带链
 // halfLen 是直线段半长，r 是端部半径（也等于履带中心线高度），底部刚好落在 y=0
-function trackLoop(o = {}) {
+export function trackLoop(o = {}) {
   const { halfLen = 1.35, r = 0.34, w = 0.62, count = 26, color = 0x26282c } = o;
   const straight = 2 * halfLen;
   const arc = Math.PI * r;
@@ -50,7 +50,7 @@ function trackLoop(o = {}) {
 }
 
 // 履带内部：履带架 + 驱动轮/引导轮 + 支重轮 + 托链轮
-function trackInternals(o = {}) {
+export function trackInternals(o = {}) {
   const { halfLen = 1.35, r = 0.34, w = 0.62, road = 4 } = o;
   const out = [
     box(w * 0.6, r * 1.0, halfLen * 1.62, 0x3a3f45, 0, 0, 0, { rough: 0.82, metal: 0.18 }),
@@ -73,7 +73,7 @@ function trackInternals(o = {}) {
 }
 
 // 液压油缸：从 a 到 b 的一段缸筒 + 一段活塞杆，自动对齐方向
-function strut(a, b, r1 = 0.09, r2 = 0.05, c1 = 0x3a3f45, c2 = 0xdde3e8) {
+export function strut(a, b, r1 = 0.09, r2 = 0.05, c1 = 0x3a3f45, c2 = 0xdde3e8) {
   const dy = b[1] - a[1];
   const dz = b[2] - a[2];
   const len = Math.hypot(dy, dz) || 1;
