@@ -8,8 +8,12 @@ import { excavator, bulldozer, crane, mixer, tractor, loader, roller, dumper, co
 import { backhoe, seeder } from './machines2.js';
 import { asphaltpaver, rotarydrill, truckcrane } from './machines3.js';
 import { towtruck, doublebus, reeftruck } from './trucks3.js';
+import { laddertruck, snowplow, sewagetruck } from './special3.js';
+import { grader, coldplaner, crawlercrane } from './machines4.js';
+import { flatbed, midaxle, posttruck } from './trucks4.js';
+import { baler, farmtruck, transplanter } from './farm2.js';
 
-export const VEHICLES = [sedan, sports, suv, pickup, minivan, boxtruck, semitruck, containertruck, cartransporter, reeftruck, towtruck, doublebus, schoolbus, rv, bus, police, firetruck, ambulance, watertruck, garbagetruck, sweeper, tankertruck, excavator, backhoe, bulldozer, crane, concretepump, mixer, loader, skidsteer, forklift, boomlift, roller, dumper, tractor, seeder, combine, sprayer, asphaltpaver, rotarydrill, truckcrane];
+export const VEHICLES = [sedan, sports, suv, pickup, minivan, boxtruck, semitruck, containertruck, cartransporter, reeftruck, towtruck, doublebus, schoolbus, rv, bus, police, firetruck, ambulance, laddertruck, snowplow, sewagetruck, watertruck, garbagetruck, sweeper, tankertruck, posttruck, flatbed, midaxle, excavator, backhoe, bulldozer, crane, crawlercrane, concretepump, mixer, loader, skidsteer, forklift, boomlift, roller, grader, coldplaner, dumper, tractor, seeder, combine, sprayer, baler, farmtruck, transplanter, asphaltpaver, rotarydrill, truckcrane];
 
 export const CATEGORIES = ['家用车', '特种车', '工程车', '农用车'];
 
