@@ -1,6 +1,7 @@
 // 数据契约校验：不依赖浏览器和 three.js，直接读 js/data 的导出做静态检查。
 // 用法：npm run validate
 import { VEHICLES, CATEGORIES } from '../js/data/index.js';
+import { CATALOG, CATEGORIES as CATALOG_CATEGORIES, CATEGORY_META as CATALOG_META, loadVehicle } from '../js/data/catalog.js';
 
 const KINDS = new Set(['box', 'cyl', 'torus', 'sphere', 'lathe', 'hull', 'glass', 'cone', 'arch']);
 const SPINS = new Set(['x', 'y', 'z']);
@@ -97,6 +98,42 @@ VEHICLES.forEach((v) => {
 
 if (VEHICLES.length !== vehicleIds.size) {
   fail('车库', `VEHICLES 里有重复 id（${VEHICLES.length} 项 / ${vehicleIds.size} 个唯一 id）`);
+}
+
+/* ---------------- catalog：车库元数据与懒加载映射 ---------------- */
+// catalog.js 由 tools/catalog.mjs 生成，这里确认它没有和数据文件脱节
+if (CATALOG_CATEGORIES.join(',') !== CATEGORIES.join(',')) {
+  fail('catalog', `分类列表与 index.js 不一致：${CATALOG_CATEGORIES.join(',')} / ${CATEGORIES.join(',')}`);
+}
+CATEGORIES.forEach((c) => {
+  const m = CATALOG_META[c];
+  if (!m || !isText(m.icon) || !COLOR.test(m.color || '')) fail('catalog', `分类 ${c} 的 icon/color 缺失`);
+});
+
+if (CATALOG.length !== VEHICLES.length) {
+  fail('catalog', `车型数不一致：catalog ${CATALOG.length} / index.js ${VEHICLES.length}，请重新跑 npm run catalog`);
+} else {
+  for (let i = 0; i < CATALOG.length; i++) {
+    const meta = CATALOG[i];
+    const def = VEHICLES[i];
+    const where = `catalog ${meta.id}`;
+    if (meta.id !== def.id) {
+      fail(where, `顺序与 index.js 不一致：第 ${i} 台应为 ${def.id}，请重新跑 npm run catalog`);
+      continue;
+    }
+    ['name', 'icon', 'category', 'color'].forEach((k) => {
+      if (meta[k] !== def[k]) fail(where, `${k} 与数据不一致：${meta[k]} / ${def[k]}`);
+    });
+    if (meta.partCount !== def.parts.length) {
+      fail(where, `partCount 与数据不一致：${meta.partCount} / ${def.parts.length}`);
+    }
+    try {
+      const loaded = await loadVehicle(meta.id);
+      if (loaded !== def) fail(where, 'loadVehicle 加载到的对象不是数据文件里的那一台');
+    } catch (e) {
+      fail(where, 'loadVehicle 失败：' + e.message);
+    }
+  }
 }
 
 const summary = `${VEHICLES.length} 台车 / ${partCount} 个零件 / ${pieceCount} 个零件块`;

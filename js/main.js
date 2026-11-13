@@ -5,7 +5,10 @@ import { RenderPass } from '../vendor/postprocessing/RenderPass.js';
 import { SSAOPass } from '../vendor/postprocessing/SSAOPass.js';
 import { UnrealBloomPass } from '../vendor/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '../vendor/postprocessing/OutputPass.js';
-import { VEHICLES, CATEGORIES, CATEGORY_META } from './data/index.js';
+import { CATEGORIES, CATEGORY_META, CATALOG, loadVehicle } from './data/catalog.js';
+
+// 车库元数据是同步的，车型数据按文件懒加载：点开哪台车才下载它所在的那份数据
+const catalogById = new Map(CATALOG.map((v) => [v.id, v]));
 
 /* ---------------- 基础环境 ---------------- */
 const stage = document.getElementById('canvas-wrap');
@@ -622,34 +625,92 @@ function getGeometry(pc) {
 // 一辆车里六成以上的网格是轮胎花纹、螺栓这类小方块，
 // 合并后每帧的 draw call 能降到原来的十分之一，外观完全不变。
 function mergePieces(items) {
-  const pos = [];
-  const norm = [];
-  const uv = [];
   const withUv = items.every((it) => !!it.geo.attributes.uv);
+  // 先统一转成非索引几何并统计顶点总数，一次性开好 TypedArray：
+  // 以前是往普通数组里 push 几十万次再转 Float32Array，切车时会制造大量临时对象
+  const srcs = items.map((it) => (it.geo.index ? it.geo.toNonIndexed() : it.geo));
+  let total = 0;
+  for (const s of srcs) total += s.attributes.position.count;
+
+  const pos = new Float32Array(total * 3);
+  const norm = new Float32Array(total * 3);
+  const uv = withUv ? new Float32Array(total * 2) : null;
+
   const v = new THREE.Vector3();
   const n = new THREE.Vector3();
   const nm = new THREE.Matrix3();
-  items.forEach((it) => {
-    const src = it.geo.index ? it.geo.toNonIndexed() : it.geo;
+  let o3 = 0;
+  let o2 = 0;
+  items.forEach((it, i) => {
+    const src = srcs[i];
     const gp = src.attributes.position;
     const gn = src.attributes.normal;
     const gu = src.attributes.uv;
     nm.getNormalMatrix(it.matrix);
-    for (let i = 0; i < gp.count; i++) {
-      v.fromBufferAttribute(gp, i).applyMatrix4(it.matrix);
-      pos.push(v.x, v.y, v.z);
-      n.fromBufferAttribute(gn, i).applyMatrix3(nm).normalize();
-      norm.push(n.x, n.y, n.z);
-      if (withUv) uv.push(gu.getX(i), gu.getY(i));
+    for (let k = 0; k < gp.count; k++) {
+      v.fromBufferAttribute(gp, k).applyMatrix4(it.matrix);
+      pos[o3] = v.x;
+      pos[o3 + 1] = v.y;
+      pos[o3 + 2] = v.z;
+      n.fromBufferAttribute(gn, k).applyMatrix3(nm).normalize();
+      norm[o3] = n.x;
+      norm[o3 + 1] = n.y;
+      norm[o3 + 2] = n.z;
+      o3 += 3;
+      if (uv) {
+        uv[o2] = gu.getX(k);
+        uv[o2 + 1] = gu.getY(k);
+        o2 += 2;
+      }
     }
     if (src !== it.geo) src.dispose();
   });
+
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
-  if (withUv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
+  if (uv) geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.computeBoundingBox();
   geo.computeBoundingSphere();
+  return geo;
+}
+
+// 合并结果缓存：来回切车时直接复用，省掉整棵零件树的顶点合并。
+// 只保留最近 MERGED_VEHICLE_LIMIT 台车，更早的按最久未用淘汰；
+// 淘汰时还挂在场景里的几何体先寄存（geoParked），等引用归零再释放。
+const MERGED_VEHICLE_LIMIT = 3;
+const mergedCache = new Map();
+const mergedByVehicle = new Map();
+const mergedOrder = [];
+
+function touchMergedVehicle(vid) {
+  const at = mergedOrder.indexOf(vid);
+  if (at >= 0) mergedOrder.splice(at, 1);
+  mergedOrder.push(vid);
+  if (!mergedByVehicle.has(vid)) mergedByVehicle.set(vid, new Set());
+  while (mergedOrder.length > MERGED_VEHICLE_LIMIT) {
+    const old = mergedOrder.shift();
+    const keys = mergedByVehicle.get(old);
+    mergedByVehicle.delete(old);
+    if (!keys) continue;
+    for (const key of keys) {
+      const geo = mergedCache.get(key);
+      mergedCache.delete(key);
+      if (!geo) continue;
+      if ((geo.userData.live || 0) > 0) geoParked.add(geo);
+      else geo.dispose();
+    }
+  }
+}
+
+function getMergedGeometry(key, vid, items) {
+  let geo = mergedCache.get(key);
+  if (!geo) {
+    geo = mergePieces(items);
+    mergedCache.set(key, geo);
+    mergedByVehicle.get(vid).add(key);
+  }
+  geo.userData.live = (geo.userData.live || 0) + 1;
   return geo;
 }
 
@@ -773,7 +834,7 @@ function updateFx(dt) {
 }
 
 const parts = [];
-let currentVehicle = VEHICLES[0];
+let currentVehicle = CATALOG[0];
 let scatterRadius = 3.2;
 let baseMaxDim = 4;
 let baseCenterY = 1;
@@ -786,8 +847,8 @@ function clearVehicle() {
     p.group.traverse((o) => {
       if (!o.isMesh) return;
       const geo = o.geometry;
-      // 合并出来的几何体独一份，直接释放；单件网格引用的是缓存，只减引用计数
-      if (o.userData.ownGeo) { geo.dispose(); return; }
+      // 合并几何体和缓存里的单件几何体都走引用计数：缓存还留着就先不释放，
+      // 只有被淘汰（进了 geoParked）且没人再引用时才真正 dispose
       geo.userData.live = Math.max(0, (geo.userData.live || 0) - 1);
       if (geo.userData.live === 0 && geoParked.has(geo)) {
         geoParked.delete(geo);
@@ -806,6 +867,7 @@ function clearVehicle() {
 
 function buildVehicle(def) {
   clearVehicle();
+  touchMergedVehicle(def.id);
   markerRoot.visible = false;
 
   def.parts.forEach((pd, index) => {
@@ -843,14 +905,20 @@ function buildVehicle(def) {
       }
     });
 
+    // 缓存键里的桶序号按 Map 插入顺序递增，同一份零件定义每次重建都一致
+    let bucket = 0;
     buckets.forEach((items, mat) => {
+      const slot = bucket++;
       // 带贴图的材质要求每个几何体都有 uv，否则退回逐个建网格
       if (items.length > 1 && (!mat.map || items.every((it) => !!it.geo.attributes.uv))) {
-        const mesh = new THREE.Mesh(mergePieces(items), mat);
+        // 缓存键用「车型 / 零件 / 同材质桶序号」：同一定义的合并结果稳定不变，可以跨切车复用
+        const mesh = new THREE.Mesh(
+          getMergedGeometry(def.id + '|' + pd.id + '|' + slot, def.id, items),
+          mat
+        );
         mesh.castShadow = items[0].cast;
         mesh.receiveShadow = items[0].recv;
         mesh.userData.baseY = 0;
-        mesh.userData.ownGeo = true;
         group.add(mesh);
         return;
       }
@@ -1088,7 +1156,7 @@ function vehItem(v) {
   el.innerHTML =
     '<div class="veh-icon">' + v.icon + '</div>' +
     '<div class="veh-meta"><div class="veh-name">' + v.name + '</div>' +
-    '<div class="veh-sub">' + v.parts.length + ' 个零件</div></div>' +
+    '<div class="veh-sub">' + v.partCount + ' 个零件</div></div>' +
     '<div class="veh-done">✔</div>';
   el.addEventListener('click', () => selectVehicle(v.id));
   return el;
@@ -1116,10 +1184,10 @@ function renderGarage() {
   const q = garageQuery();
   list.innerHTML = '';
 
-  const matched = VEHICLES.filter((v) => matchVehicle(v, q));
+  const matched = CATALOG.filter((v) => matchVehicle(v, q));
   $('garage-count').textContent = q
-    ? matched.length + ' / ' + VEHICLES.length + ' 辆'
-    : VEHICLES.length + ' 辆';
+    ? matched.length + ' / ' + CATALOG.length + ' 辆'
+    : CATALOG.length + ' 辆';
 
   // 最近浏览只在没搜索时显示，免得和搜索结果抢位置
   if (!q && recentIds.length) {
@@ -1130,7 +1198,7 @@ function renderGarage() {
     const body = document.createElement('div');
     body.className = 'cat-items';
     recentIds.forEach((id) => {
-      const v = VEHICLES.find((x) => x.id === id);
+      const v = catalogById.get(id);
       if (v) body.appendChild(vehItem(v));
     });
     block.appendChild(body);
@@ -1188,7 +1256,7 @@ function renderRecent() {
   const body = document.createElement('div');
   body.className = 'cat-items';
   recentIds.forEach((id) => {
-    const v = VEHICLES.find((x) => x.id === id);
+    const v = catalogById.get(id);
     if (v) body.appendChild(vehItem(v));
   });
   block.appendChild(body);
@@ -1212,27 +1280,43 @@ function refreshGarageState() {
   });
 }
 
-function selectVehicle(id) {
-  const v = VEHICLES.find((x) => x.id === id);
-  if (!v) return;
-  currentVehicle = v;
+// 切车令牌：连着点两台车时，只让最后点击的那台落地，避免先到的数据把后点的覆盖掉
+let selectToken = 0;
+
+async function selectVehicle(id) {
+  const meta = catalogById.get(id);
+  if (!meta) return;
+  const token = ++selectToken;
+
+  // 先把选中态和顶栏文案换掉：数据文件下载期间界面就有反馈，旧车留在画面上不闪空
+  currentVehicle = meta;
   hideCard();
   hidePrinciple();
   hideCelebrate();
-  buildVehicle(v);
+  refreshGarageState();
+  $('vi-icon').textContent = meta.icon;
+  $('vi-name').textContent = meta.name;
+  $('vi-tag').textContent = meta.category;
+  $('pp-icon').textContent = meta.icon;
+
+  let def;
+  try {
+    def = await loadVehicle(id);
+  } catch (err) {
+    console.error('车型数据加载失败：' + id, err);
+    return;
+  }
+  if (token !== selectToken) return;
+
+  buildVehicle(def);
   fitCamera();
-  $('vi-icon').textContent = v.icon;
-  $('vi-name').textContent = v.name;
-  $('vi-tag').textContent = v.category;
-  $('vi-intro').textContent = v.intro;
-  $('pp-icon').textContent = v.icon;
-  $('pp-title').textContent = v.intro;
-  $('pp-steps').innerHTML = v.steps.map((s) => '<li>' + s + '</li>').join('');
+  $('vi-intro').textContent = def.intro;
+  $('pp-title').textContent = def.intro;
+  $('pp-steps').innerHTML = def.steps.map((s) => '<li>' + s + '</li>').join('');
   setMode('explore', true);
   sfx('select');
-  if (!firstSelect) rememberVehicle(v.id);
+  if (!firstSelect) rememberVehicle(def.id);
   firstSelect = false;
-  refreshGarageState();
   hint('点一点零件，看看它是什么～');
 }
 
@@ -2133,14 +2217,14 @@ $('btn-sound').addEventListener('click', () => {
 $('btn-again').addEventListener('click', () => { hideCelebrate(); setMode('assemble'); });
 $('btn-next').addEventListener('click', () => {
   hideCelebrate();
-  const idx = VEHICLES.findIndex((v) => v.id === currentVehicle.id);
-  selectVehicle(VEHICLES[(idx + 1) % VEHICLES.length].id);
+  const idx = CATALOG.findIndex((v) => v.id === currentVehicle.id);
+  selectVehicle(CATALOG[(idx + 1) % CATALOG.length].id);
 });
 
 /* ---------------- 启动 ---------------- */
 buildGarage();
 setMode('explore', true);
-selectVehicle(VEHICLES[0].id);
+selectVehicle(CATALOG[0].id);
 resize();
 animate();
 
@@ -2156,7 +2240,8 @@ if (location.search.indexOf('debug') !== -1) {
     ssaoPass,
     bloomPass,
     outputPass,
-    VEHICLES,
+    VEHICLES: CATALOG,
+    loadVehicle,
     setMode,
     selectVehicle,
     get current() { return currentVehicle; },
