@@ -46,6 +46,19 @@ export const glassPatch = (sta, color, o = {}) => ({
 export const arch = (R, t, color, x = 0, y = 0, z = 0, o = {}) =>
   ({ g: 'arch', s: [R, t, 8], c: color, p: [x, y, z], r: [0, Math.PI / 2, 0], ...o });
 
+// 把相邻零件并进一个零件：以 a 的支点为基准，把 b（可传数组）的零件块平移进 a 的局部坐标。
+// 只用于静态零件——带 spin / anim 的零件要单独保留，否则旋转和动画会作用到整组几何上。
+export const mergeParts = (a, extra, o) => {
+  const pieces = a.pieces.slice();
+  for (const b of [].concat(extra)) {
+    const d = [b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], b.pos[2] - a.pos[2]];
+    for (const pc of b.pieces) {
+      pieces.push({ ...pc, p: [pc.p[0] + d[0], pc.p[1] + d[1], pc.p[2] + d[2]] });
+    }
+  }
+  return { ...a, ...o, pos: a.pos, pieces };
+};
+
 // 前大灯总成：深色灯腔 + 镀铬反光碗 + 双透镜 + 日行灯导光条 + 外侧转向灯
 // (x,y,z) 是灯腔中心，朝 +Z 安装；w/h 是灯罩尺寸
 export function lamp(x, y, z, w = 0.32, h = 0.13, o = {}) {

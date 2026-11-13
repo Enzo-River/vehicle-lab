@@ -1,4 +1,4 @@
-import { C, box, cyl, tor, cone, fourWheels, hull, arch, glassPatch, lamp, tailLamp, underbody } from './common.js';
+import { C, box, cyl, tor, cone, fourWheels, hull, arch, glassPatch, lamp, tailLamp, underbody, mergeParts } from './common.js';
 
 // 座舱轮廓：车身和贴合它的玻璃共用同一组截面
 // 半宽贴着下车身顶部收口，避免座舱像单独扣在车顶上的方盒子
@@ -46,7 +46,7 @@ export const sedan = {
   intro: '最常见的家用汽车，发动机藏在车头的引擎盖下面，动力靠传动轴送到车轮。',
   steps: ['发动机燃烧汽油，产生动力', '变速箱把动力调整到合适的大小', '传动轴把动力送到车轮', '车轮转动，汽车向前跑'],
   parts: [
-    {
+    mergeParts({
       id: 'body', name: '车身', color: '#2f6fd0', pos: [0, 0, 0], off: [0, 2.4, 0],
       desc: '汽车的外壳和骨架，保护车里的人和零件。',
       tip: '车身用高强度钢和铝合金做成，又结实又轻。',
@@ -142,8 +142,7 @@ export const sedan = {
         arch(0.37, 0.04, 0x2f6fd0, -0.905, 0.34, -1.35),
         arch(0.37, 0.04, 0x2f6fd0, 0.905, 0.34, -1.35)
       ]
-    },
-    {
+    }, {
       id: 'windows', name: '车窗玻璃', color: '#9fd8f0', pos: [0, 0, 0], off: [0, 1.6, -1.6],
       desc: '透明的玻璃让司机看清外面，也能挡风遮雨。',
       tip: '前挡风玻璃是夹胶玻璃，碎了也不会飞溅伤人。',
@@ -156,7 +155,10 @@ export const sedan = {
         glassPatch(CAB_SEDAN, C.glass, { z0: -1.02, z1: -0.16, u0: Math.PI - 0.33, u1: Math.PI + 0.33, pow: 5.2, tumble: 0.24, tuck: 0.06 }),        // 左后侧窗
         glassPatch(CAB_SEDAN, C.glass, { z0: -1.02, z1: -0.16, u0: 0.33, u1: -0.33, pow: 5.2, tumble: 0.24, tuck: 0.06 })                           // 右后侧窗
       ]
-    },
+    }, {
+      id: 'body', name: '车身与车窗', desc: '汽车的外壳和骨架保护车里的人，透明的车窗让司机看清外面。',
+      tip: '车身用高强度钢和铝合金做成，又结实又轻。'
+    }),
     {
       id: 'engine', name: '发动机', color: '#d24b2a', pos: [0, 0.55, 1.45], off: [0, 1.1, 0.9],
       desc: '汽车的心脏，把汽油的化学能变成转动的力量。',
@@ -169,7 +171,7 @@ export const sedan = {
         cyl(0.16, 0.16, 0.1, 0x2b2b2b, 0, 0.1, -0.2, { r: [Math.PI / 2, 0, 0] })
       ]
     },
-    {
+    mergeParts({
       id: 'gearbox', name: '变速箱', color: '#8a939c', pos: [0, 0.72, 0.62], off: [0, 0.8, -0.7],
       desc: '像自行车的变速器，调节力量大小和速度快慢。',
       tip: '挂低挡力量大但跑得慢，挂高挡跑得快但力量小。',
@@ -177,14 +179,16 @@ export const sedan = {
         box(0.36, 0.32, 0.55, 0x8a939c, 0, 0, 0),
         box(0.42, 0.06, 0.6, 0x5c646b, 0, 0.2, 0)
       ]
-    },
-    {
+    }, {
       id: 'driveshaft', name: '传动轴', color: '#c9ced4', pos: [0, 0.55, -0.55], off: [0, 0.2, -1.4],
       desc: '一根会转的长轴，把变速箱的动力送到后轮。',
       tip: '传动轴两端有万向节，过颠簸路面也照样传力。',
       pieces: [cyl(0.055, 0.055, 1.5, 0xc9ced4, 0, 0, 0, { r: [Math.PI / 2, 0, 0] })]
-    },
-    {
+    }, {
+      id: 'gearbox', name: '变速箱与传动轴', desc: '变速箱像变速器调节力量和速度，传动轴把动力送到后轮。',
+      tip: '挂低挡力量大但跑得慢，挂高挡跑得快但力量小。'
+    }),
+    mergeParts({
       id: 'steering', name: '方向盘', color: '#22252a', pos: [0, 1.15, 0.55], off: [0, 2.0, 0.5],
       desc: '驾驶员转动方向盘，就能让前轮左转或右转。',
       tip: '方向盘下面是转向柱，转动会被放大后传给前轮。',
@@ -192,8 +196,7 @@ export const sedan = {
         tor(0.16, 0.035, 0x22252a, 0, 0, 0, { r: [-0.3, 0, 0] }),
         cyl(0.035, 0.035, 0.36, 0x555b62, 0, -0.16, -0.12, { r: [1.1, 0, 0] })
       ]
-    },
-    {
+    }, {
       id: 'seats', name: '座椅', color: '#4a3526', pos: [0, 0.55, -0.5], off: [0, 1.5, -1.2],
       desc: '让乘客坐得舒服，安全带能保护我们的身体。',
       tip: '座椅里面有钢骨架，撞车时能吸收冲击力。',
@@ -201,7 +204,10 @@ export const sedan = {
         box(0.42, 0.12, 0.45, 0x4a3526, x, 0.12, 0),
         box(0.42, 0.5, 0.1, 0x4a3526, x, 0.36, -0.22)
       ])
-    },
+    }, {
+      id: 'steering', name: '方向盘与座椅', desc: '方向盘控制前轮转弯，座椅让人坐得舒服，还能保护身体。',
+      tip: '方向盘下面是转向柱，转动会被放大后传给前轮。'
+    }),
     ...fourWheels({ r: 0.34, w: 0.25, x: 0.78, zf: 1.35, zr: -1.35 }),
     {
       id: 'lights', name: '前大灯', color: '#ffd060', pos: [0, 0.67, 2.17], off: [0, 0.5, 1.8],
@@ -228,7 +234,7 @@ export const sports = {
   intro: '车身又低又扁，可以减少风的阻力；发动机马力大，跑得特别快。',
   steps: ['低矮的车身让风更容易滑过', '大马力发动机输出强劲动力', '宽轮胎抓地更牢，起步不打滑', '尾翼压住车尾，高速更稳'],
   parts: [
-    {
+    mergeParts({
       id: 'body', name: '车身', color: '#d22b2b', pos: [0, 0, 0], off: [0, 2.2, 0],
       desc: '像子弹一样的流线型外壳，能减少空气阻力。',
       tip: '跑车的风阻系数比普通轿车小很多。',
@@ -302,8 +308,7 @@ export const sports = {
         arch(0.4, 0.045, 0xd22b2b, -0.99, 0.36, -1.4),
         arch(0.4, 0.045, 0xd22b2b, 0.99, 0.36, -1.4)
       ]
-    },
-    {
+    }, [{
       id: 'windows', name: '车窗玻璃', color: '#9fd8f0', pos: [0, 0, 0], off: [0, 1.5, -1.4],
       desc: '低矮的车窗让车身更顺滑，也方便看清外面。',
       tip: '跑车玻璃常常很斜，是为了顺着风的方向。',
@@ -313,8 +318,7 @@ export const sports = {
         glassPatch(CAB_SPORTS, C.glass, { z0: -0.75, z1: 0.45, u0: Math.PI - 0.35, u1: Math.PI + 0.35, pow: 5.0, tumble: 0.24, tuck: 0.04 }),        // 左侧窗
         glassPatch(CAB_SPORTS, C.glass, { z0: -0.75, z1: 0.45, u0: 0.35, u1: -0.35, pow: 5.0, tumble: 0.24, tuck: 0.04 })                          // 右侧窗
       ]
-    },
-    {
+    }, {
       id: 'spoiler', name: '鸭尾扰流板', color: '#8f1d1d', pos: [0, 0.79, -2.0], off: [0, 1.4, -1.6],
       desc: '车尾微微翘起的小鸭尾，高速时把车尾压向地面。',
       tip: '跑车的尾部扰流板能减少车尾升力，转弯更稳。',
@@ -322,7 +326,10 @@ export const sports = {
         box(1.5, 0.06, 0.4, 0xd22b2b, 0, 0, 0, { r: [0.1, 0, 0] }),
         box(1.52, 0.018, 0.07, 0x1b1b1b, 0, -0.015, -0.18, { r: [0.1, 0, 0] })
       ]
-    },
+    }], {
+      id: 'body', name: '车身与扰流板', desc: '流线型外壳减少风的阻力，车尾的扰流板把车尾压向地面，跑起来更稳。',
+      tip: '跑车的风阻系数比普通轿车小很多。'
+    }),
     {
       id: 'engine', name: '发动机', color: '#3a3a3a', pos: [0, 0.58, -0.9], off: [0, 1.0, -1.2],
       desc: '跑车的发动机马力很大，装在车身中间更平衡。',
@@ -340,7 +347,7 @@ export const sports = {
       tip: '跑车常用双离合变速箱，换挡只要零点几秒。',
       pieces: [box(0.44, 0.32, 0.5, 0x8a939c, 0, 0, 0)]
     },
-    {
+    mergeParts({
       id: 'steering', name: '方向盘', color: '#22252a', pos: [0, 0.95, 0.6], off: [0, 1.8, 0.6],
       desc: '小巧的方向盘，转起来更快更灵敏。',
       tip: '赛车方向盘上有很多按钮，像游戏手柄一样。',
@@ -348,8 +355,7 @@ export const sports = {
         tor(0.15, 0.032, 0x22252a, 0, 0, 0, { r: [-0.45, 0, 0] }),
         cyl(0.032, 0.032, 0.3, 0x555b62, 0, -0.14, -0.1, { r: [1.1, 0, 0] })
       ]
-    },
-    {
+    }, {
       id: 'seats', name: '运动座椅', color: '#2a2a2a', pos: [0, 0.5, -0.3], off: [0, 1.3, -1.0],
       desc: '包裹身体的赛车座椅，转弯时把人稳稳抱住。',
       tip: '赛车还会用四点式安全带。',
@@ -357,7 +363,10 @@ export const sports = {
         box(0.4, 0.12, 0.42, 0x2a2a2a, x, 0.12, 0),
         box(0.4, 0.48, 0.1, 0x2a2a2a, x, 0.36, -0.2)
       ])
-    },
+    }, {
+      id: 'steering', name: '方向盘与运动座椅', desc: '小巧的方向盘转得快，运动座椅把身体抱住，转弯时坐得更稳。',
+      tip: '赛车方向盘上有很多按钮，像游戏手柄一样。'
+    }),
     ...fourWheels({ r: 0.36, w: 0.28, x: 0.87, zf: 1.4, zr: -1.4, rim: 0xe0c060 }),
     {
       id: 'lights', name: '大灯', color: '#ffffff', pos: [0, 0.5, 2.31], off: [0, 0.4, 1.7],
@@ -390,7 +399,7 @@ export const suv = {
   intro: '车身高大、底盘高，四个轮子都能出力，所以能走泥地和山路。',
   steps: ['高底盘让车不容易磕到底盘', '四驱系统把动力分给四个轮子', '宽轮胎在泥地里抓得住', '行李架能装下露营装备'],
   parts: [
-    {
+    mergeParts({
       id: 'body', name: '车身', color: '#3b7d52', pos: [0, 0, 0], off: [0, 2.6, 0],
       desc: '高大的车厢，坐得高看得远。',
       tip: 'SUV 是运动型多用途车的意思。',
@@ -477,21 +486,7 @@ export const suv = {
         arch(0.47, 0.06, 0x357045, -0.995, 0.42, -1.45),
         arch(0.47, 0.06, 0x357045, 0.995, 0.42, -1.45)
       ]
-    },
-    {
-      id: 'windows', name: '车窗玻璃', color: '#9fd8f0', pos: [0, 0, 0], off: [0, 1.7, -1.8],
-      desc: '大大的车窗，方便观察路况。',
-      tip: '玻璃还贴了隔热膜，夏天不晒。',
-      pieces: [
-        glassPatch(CAB_SUV, C.glass, { z0: 0.82, z1: 1.20, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.18, tuck: 0.04 }),  // 前挡风
-        glassPatch(CAB_SUV, C.glass, { z0: -2.12, z1: -1.83, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.18, tuck: 0.04 }), // 后挡风
-        glassPatch(CAB_SUV, C.glass, { z0: 0.06, z1: 0.78, u0: Math.PI - 0.32, u1: Math.PI + 0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 }),         // 左前侧窗
-        glassPatch(CAB_SUV, C.glass, { z0: 0.06, z1: 0.78, u0: 0.32, u1: -0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 }),                            // 右前侧窗
-        glassPatch(CAB_SUV, C.glass, { z0: -1.80, z1: -0.06, u0: Math.PI - 0.32, u1: Math.PI + 0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 }),        // 左后侧窗
-        glassPatch(CAB_SUV, C.glass, { z0: -1.80, z1: -0.06, u0: 0.32, u1: -0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 })                           // 右后侧窗
-      ]
-    },
-    {
+    }, {
       id: 'roofrack', name: '车顶行李架', color: '#2b2b2b', pos: [0, 1.762, -0.3], off: [0, 1.2, -1.5],
       desc: '在车顶放帐篷、自行车和行李箱。',
       tip: '行李架上的东西要绑牢，不然会飞出去。',
@@ -503,6 +498,22 @@ export const suv = {
         // 支架脚：把行李架落到车顶，不再凭空悬浮
         ...[0.82, -0.82].flatMap((z) => [-1, 1].map((sx) =>
           box(0.05, 0.1, 0.05, 0x2b2b2b, sx * 0.72, -0.09, z)))
+      ]
+    }, {
+      id: 'body', name: '车身与行李架', desc: '高大的车厢坐得高看得远，车顶的行李架能放帐篷、自行车和行李箱。',
+      tip: 'SUV 是运动型多用途车的意思。'
+    }),
+    {
+      id: 'windows', name: '车窗玻璃', color: '#9fd8f0', pos: [0, 0, 0], off: [0, 1.7, -1.8],
+      desc: '大大的车窗，方便观察路况。',
+      tip: '玻璃还贴了隔热膜，夏天不晒。',
+      pieces: [
+        glassPatch(CAB_SUV, C.glass, { z0: 0.82, z1: 1.20, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.18, tuck: 0.04 }),  // 前挡风
+        glassPatch(CAB_SUV, C.glass, { z0: -2.12, z1: -1.83, u0: Math.PI / 2 - 0.75, u1: Math.PI / 2 + 0.75, pow: 5.0, tumble: 0.18, tuck: 0.04 }), // 后挡风
+        glassPatch(CAB_SUV, C.glass, { z0: 0.06, z1: 0.78, u0: Math.PI - 0.32, u1: Math.PI + 0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 }),         // 左前侧窗
+        glassPatch(CAB_SUV, C.glass, { z0: 0.06, z1: 0.78, u0: 0.32, u1: -0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 }),                            // 右前侧窗
+        glassPatch(CAB_SUV, C.glass, { z0: -1.80, z1: -0.06, u0: Math.PI - 0.32, u1: Math.PI + 0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 }),        // 左后侧窗
+        glassPatch(CAB_SUV, C.glass, { z0: -1.80, z1: -0.06, u0: 0.32, u1: -0.32, pow: 5.0, tumble: 0.18, tuck: 0.04 })                           // 右后侧窗
       ]
     },
     {

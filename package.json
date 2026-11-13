@@ -4,6 +4,12 @@
   "description": "儿童 3D 汽车拆装学习游戏",
   "type": "module",
   "scripts": {
-    "start": "python3 -m http.server 8080"
+    "start": "python3 -m http.server 8080",
+    "validate": "node tools/validate.mjs",
+    "audit": "node tools/audit.mjs",
+    "fit": "node tools/fit.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.0.0"
   }
 }

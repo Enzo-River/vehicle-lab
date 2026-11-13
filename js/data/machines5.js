@@ -612,7 +612,7 @@ export const soilstabilizer = {
       ]
     },
     {
-      id: 'rotor', name: '铣刨转子', color: '#4a5057', pos: [0, 0, 0], off: [0, 0.4, -1.4],
+      id: 'rotor', name: '铣刨转子', color: '#4a5057', pos: [0, 0.60, -0.55], off: [0, 0.4, -1.4],
       desc: '转子上焊着一圈硬质合金刀头，转起来像一台横着放的搅拌机，把土和灰打碎拌匀。',
       tip: '刀头磨坏了要成组更换，不然转起来会抖，拌得也不均匀。',
       spin: 'x',
@@ -635,7 +635,7 @@ export const soilstabilizer = {
             { r: [a, 0, 0], metal: 0.75, rough: 0.3 });
         }),
         cyl(0.10, 0.10, 0.16, 0x8a939c, -0.88, 0.60, -0.55, { r: [0, 0, Math.PI / 2], seg: 16, metal: 0.6, rough: 0.35 })
-      ]
+      ].map((pc) => ({ ...pc, p: [pc.p[0], pc.p[1] - 0.60, pc.p[2] + 0.55] }))
     },
     {
       id: 'tank', name: '水罐', color: '#e8eef3', pos: [0, 0, 0], off: [0, 3.0, -0.2],

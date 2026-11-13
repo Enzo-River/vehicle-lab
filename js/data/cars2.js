@@ -1,4 +1,4 @@
-import { C, box, cyl, tor, cone, fourWheels, hull, arch, glassPatch, lamp, tailLamp, underbody } from './common.js';
+import { C, box, cyl, tor, cone, fourWheels, hull, arch, glassPatch, lamp, tailLamp, underbody, mergeParts } from './common.js';
 
 // 座舱轮廓：车身与贴合玻璃共用
 const CAB_PICKUP = [
@@ -182,7 +182,7 @@ export const police = {
   intro: '警车有闪亮的警灯和响亮的警笛，可以快速赶到现场，也能提醒大家让路。',
   steps: ['警灯红蓝闪烁，远远就能看见', '警笛发声提醒车辆让路', '发动机马力大，追得快', '车载电台和警察局保持联系'],
   parts: [
-    {
+    mergeParts({
       id: 'body', name: '车身', color: '#1b3a8f', pos: [0, 0, 0], off: [0, 2.3, 0],
       desc: '警车车身是蓝白配色，两侧写着警察字样。',
       tip: '警车底盘和刹车都经过加强，开得更稳。',
@@ -257,8 +257,7 @@ export const police = {
         arch(0.37, 0.045, 0x1b3a8f, -0.93, 0.34, -1.35),
         arch(0.37, 0.045, 0x1b3a8f, 0.93, 0.34, -1.35)
       ]
-    },
-    {
+    }, {
       id: 'windows', name: '车窗玻璃', color: '#9fd8f0', pos: [0, 0, 0], off: [0, 1.5, -1.6],
       desc: '玻璃后面装了防爆膜，更安全。',
       tip: '警车玻璃在紧急时不容易被打破。',
@@ -270,7 +269,10 @@ export const police = {
         glassPatch(CAB_POLICE, C.glass, { z0: -1.02, z1: -0.16, u0: Math.PI - 0.33, u1: Math.PI + 0.33, pow: 5.2, tumble: 0.13, tuck: 0.06 }),        // 左后侧窗
         glassPatch(CAB_POLICE, C.glass, { z0: -1.02, z1: -0.16, u0: 0.33, u1: -0.33, pow: 5.2, tumble: 0.13, tuck: 0.06 })                           // 右后侧窗
       ]
-    },
+    }, {
+      id: 'body', name: '车身与车窗', desc: '蓝白配色的警车车身两侧写着警察字样，车窗贴着防爆膜，更结实安全。',
+      tip: '警车底盘和刹车都经过加强，开得更稳。'
+    }),
     {
       id: 'lightbar', name: '警灯', color: '#ff3b3b', pos: [0, 1.45, -0.1], off: [0, 2.2, -0.6],
       desc: '红蓝灯一闪一闪，告诉大家警车来了。',
@@ -302,7 +304,7 @@ export const police = {
         cyl(0.08, 0.08, 0.44, 0xa8b0b8, 0, 0.16, 0.18, { r: [Math.PI / 2, 0, 0] })
       ]
     },
-    {
+    mergeParts({
       id: 'steering', name: '方向盘', color: '#22252a', pos: [0, 1.15, 0.55], off: [0, 1.9, 0.5],
       desc: '驾驶员用它控制方向。',
       tip: '警车方向盘上还有喊话器按钮。',
@@ -310,8 +312,7 @@ export const police = {
         tor(0.16, 0.035, 0x22252a, 0, 0, 0, { r: [-1.05, 0, 0] }),
         cyl(0.035, 0.035, 0.4, 0x555b62, 0, -0.22, 0.1, { r: [0.5, 0, 0] })
       ]
-    },
-    {
+    }, {
       id: 'seats', name: '座椅', color: '#2a2a2a', pos: [0, 0.55, -0.5], off: [0, 1.4, -1.1],
       desc: '警车座椅更结实，方便长时间值勤。',
       tip: '座椅之间装有警戒装备架。',
@@ -319,7 +320,10 @@ export const police = {
         box(0.42, 0.12, 0.45, 0x2a2a2a, x, 0.12, 0),
         box(0.42, 0.5, 0.1, 0x2a2a2a, x, 0.36, -0.22)
       ])
-    },
+    }, {
+      id: 'steering', name: '方向盘与座椅', desc: '方向盘让驾驶员控制方向，结实的座椅方便警察长时间值勤。',
+      tip: '警车方向盘上还有喊话器按钮。'
+    }),
     ...fourWheels({ r: 0.34, w: 0.24, x: 0.84, zf: 1.35, zr: -1.35 }),
     {
       id: 'lights', name: '前大灯', color: '#ffd060', pos: [0, 0.65, 2.23], off: [0, 0.5, 1.7],

@@ -1,4 +1,4 @@
-import { C, box, cyl, tor, wheelSet, hull, arch, lamp, tailLamp } from './common.js';
+import { C, box, cyl, tor, wheelSet, hull, arch, lamp, tailLamp, mergeParts } from './common.js';
 
 /* —— 半挂车 / 集装箱车 / 轿运车 通用构件 —— */
 const R = 0.5;          // 卡车轮胎半径
@@ -21,11 +21,12 @@ const twinWheelPart = (id, name, x, z, w = 0.62) => ({
   desc: '驱动桥上一前一后两只并装轮胎，抓地力特别强。',
   tip: '双联桥一共有八只轮胎，空车时也会一起转。',
   color: '#3a3a3a',
-  pos: [x, 0, z],
+  pos: [x, R, z],
   off: [Math.sign(x) * 1.5, 0.15, 0],
   spin: 'x',
+  // 轮子几何以自身轴心为原点，spin 时才会绕轴转，而不是绕地面甩
   pieces: [-0.65, 0.65].flatMap((dz) => wheelSet(R, w, 0xc9ced4, 6)
-    .map((p) => ({ ...p, p: [p.p[0], p.p[1] + R, p.p[2] + dz] })))
+    .map((p) => ({ ...p, p: [p.p[0], p.p[1], p.p[2] + dz] })))
 });
 
 // 挂车后轮组：两根车轴四只宽胎，和悬架一起分担货厢重量
@@ -573,9 +574,11 @@ export const cartransporter = {
         box(2.3, 0.1, 0.12, 0xc8372d, 0, 2.9, -2.4)
       ]
     },
-    carPart('car1', '下层小汽车', 0xc8372d, '#c8372d', 0, 1.1, 1.0),
+    mergeParts(carPart('car1', '下层小汽车', 0xc8372d, '#c8372d', 0, 1.1, 1.0), carPart('car3', '下层小汽车', 0xe8eef3, '#e8eef3', 0, 1.1, -4.3), {
+      id: 'car1', name: '下层小汽车', desc: '下层车架上并排停着两台小汽车，都被绑带稳稳固定住。',
+      tip: '轿运车一次能运 8 到 10 辆小汽车，比一辆辆开过去省油。'
+    }),
     carPart('car2', '上层小汽车', 0x2f6fd0, '#2f6fd0', 0, 2.77, 0.2),
-    carPart('car3', '下层小汽车', 0xe8eef3, '#e8eef3', 0, 1.1, -4.3),
     wheelPart('wf_l', '左前轮', -0.95, 6.1),
     wheelPart('wf_r', '右前轮', 0.95, 6.1),
     twinWheelPart('wr_l', '左后轮', -0.97, 2.5),

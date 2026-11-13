@@ -1,4 +1,4 @@
-import { C, box, cyl, tor, hull, glassPatch, lamp, tailLamp, arch, fourWheels } from './common.js';
+import { C, box, cyl, tor, hull, glassPatch, lamp, tailLamp, arch, fourWheels, mergeParts } from './common.js';
 
 /* ================= 清障车 ================= */
 
@@ -85,7 +85,7 @@ export const towtruck = {
         box(0.03, 0.32, 0.03, 0x1b1b1b, 0.36, 1.46, 4.07, { r: [0, 0, -0.4] })
       ]
     },
-    {
+    mergeParts({
       id: 'bed', name: '平板', color: '#3a3f45', pos: [0, 0, 0], off: [0, 1.2, -1.4],
       desc: '一整块结实的钢板，坏车就趴在上面被拉走。',
       tip: '平板表面有防滑花纹和绑带环，车轮用绑带固定住就不会滑动。',
@@ -101,8 +101,7 @@ export const towtruck = {
         box(2.04, 0.06, 0.1, 0x9aa4ad, 0, 1.1, -3.72, { metal: 0.75, rough: 0.3 }),
         ...[-0.82, 0.82].map((x) => cyl(0.05, 0.05, 0.12, 0x9aa4ad, x, 1.06, -3.66, { r: [0, 0, Math.PI / 2], seg: 12, metal: 0.7, rough: 0.3 }))
       ]
-    },
-    {
+    }, {
       id: 'winch', name: '绞盘', color: '#8a939c', pos: [0, 0, 0], off: [0, 1.0, -0.6],
       desc: '电机带动卷筒转，把钢缆一圈圈卷起来，坏车就被拉上了平板。',
       tip: '钢缆能拉动几吨重的东西，所以一定要戴手套操作，防止划伤手。',
@@ -113,7 +112,10 @@ export const towtruck = {
         cyl(0.022, 0.022, 4.7, 0x9aa4ad, 0, 1.24, -1.0, { r: [Math.PI / 2, 0, 0], seg: 8, metal: 0.8, rough: 0.3 }),
         box(0.1, 0.12, 0.16, 0x3a3f45, 0, 1.24, -3.34)
       ]
-    },
+    }, {
+      id: 'bed', name: '平板与绞盘', desc: '结实的钢板平板用来放坏车，绞盘把钢缆卷起来，把坏车拉上平板。',
+      tip: '平板表面有防滑花纹和绑带环，车轮用绑带固定住就不会滑动。'
+    }),
     {
       id: 'lightbar', name: '警灯', color: '#ffa62b', pos: [0, 2.5, 3.4], off: [0, 1.4, 0.4],
       desc: '车顶的黄灯一闪一闪，提醒后面的车：这里有故障车，请注意避让。',
@@ -372,7 +374,7 @@ export const reeftruck = {
         box(0.03, 0.32, 0.03, 0x1b1b1b, 0.34, 1.26, 4.15, { r: [0, 0, -0.4] })
       ]
     },
-    {
+    mergeParts({
       id: 'cargo', name: '保温车厢', color: '#eef2f5', pos: [0, 0, 0], off: [0, 2.0, -1.8],
       desc: '白色的大箱子里是泡沫隔热层，外面再包一层铝板。',
       tip: '保温层越厚越省电，车厢壁有的能有十几厘米厚。',
@@ -386,8 +388,7 @@ export const reeftruck = {
         ...[-1, 1].flatMap((sx) => [-4.3, -2.9, -1.5, -0.1, 1.3].map((z) =>
           box(0.05, 1.7, 0.08, 0xdbe2e8, sx * 1.2, 2.16, z)))
       ]
-    },
-    {
+    }, {
       id: 'rear_door', name: '后门', color: '#eef2f5', pos: [0, 0, -4.63], off: [0, 1.6, -2.4],
       desc: '两扇厚厚的保温门，关上后冷气就跑不出来。',
       tip: '门的四周有橡胶密封条，门一关就严丝合缝，像冰箱门一样。',
@@ -408,7 +409,10 @@ export const reeftruck = {
           box(0.12, 0.14, 0.06, 0x8f969e, sx * 1.0, y, -0.06, { metal: 0.75, rough: 0.35 }))),
         box(0.34, 0.12, 0.02, 0xe8edf2, 0, 0.9, -0.09, { tex: 'plate' })
       ]
-    },
+    }, {
+      id: 'cargo', name: '保温车厢', desc: '白色车厢里是泡沫隔热层，两扇厚厚的后门一关，冷气就跑不出来。',
+      tip: '保温层越厚越省电，车厢壁有的能有十几厘米厚。'
+    }),
     {
       id: 'reefer', name: '制冷机', color: '#d7dee4', pos: [0, 2.62, 2.1], off: [0, 1.4, 1.0],
       desc: '装在车厢前面的小机组，一边吹冷风一边给车厢降温。',

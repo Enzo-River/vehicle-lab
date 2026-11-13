@@ -1062,31 +1062,147 @@ try {
 /* ---------------- UI ---------------- */
 const $ = (id) => document.getElementById(id);
 
+/* ---------------- 车库：搜索 / 分类折叠 / 最近浏览 ---------------- */
+const GARAGE_RECENT_MAX = 5;
+let recentIds = [];
+let collapsedCats = new Set();
+// 首次进入时的默认车不算“浏览过”，免得每次刷新都把同一台顶到最近最前面
+let firstSelect = true;
+
+function loadGaragePrefs() {
+  try { recentIds = JSON.parse(localStorage.getItem('vl-recent') || '[]'); } catch (e) { recentIds = []; }
+  try { collapsedCats = new Set(JSON.parse(localStorage.getItem('vl-collapsed') || '[]')); } catch (e) { collapsedCats = new Set(); }
+}
+
+function saveGaragePrefs() {
+  try {
+    localStorage.setItem('vl-recent', JSON.stringify(recentIds));
+    localStorage.setItem('vl-collapsed', JSON.stringify(Array.from(collapsedCats)));
+  } catch (e) { /* 隐私模式下写不了就算了 */ }
+}
+
+function vehItem(v) {
+  const el = document.createElement('div');
+  el.className = 'veh-item';
+  el.dataset.id = v.id;
+  el.innerHTML =
+    '<div class="veh-icon">' + v.icon + '</div>' +
+    '<div class="veh-meta"><div class="veh-name">' + v.name + '</div>' +
+    '<div class="veh-sub">' + v.parts.length + ' 个零件</div></div>' +
+    '<div class="veh-done">✔</div>';
+  el.addEventListener('click', () => selectVehicle(v.id));
+  return el;
+}
+
+function garageLabel(text) {
+  const label = document.createElement('div');
+  label.className = 'cat-label';
+  label.textContent = text;
+  return label;
+}
+
+const garageQuery = () => ($('garage-search').value || '').trim().toLowerCase();
+const matchVehicle = (v, q) =>
+  !q || v.name.toLowerCase().includes(q) || v.category.includes(q) || v.id.includes(q);
+
 function buildGarage() {
+  loadGaragePrefs();
+  $('garage-search').addEventListener('input', () => renderGarage());
+  renderGarage();
+}
+
+function renderGarage() {
   const list = $('garage-list');
+  const q = garageQuery();
   list.innerHTML = '';
-  CATEGORIES.forEach((cat) => {
-    const items = VEHICLES.filter((v) => v.category === cat);
-    if (!items.length) return;
-    const label = document.createElement('div');
-    label.className = 'cat-label';
-    label.textContent = CATEGORY_META[cat].icon + ' ' + cat;
-    list.appendChild(label);
-    items.forEach((v) => {
-      const el = document.createElement('div');
-      el.className = 'veh-item';
-      el.dataset.id = v.id;
-      el.innerHTML =
-        '<div class="veh-icon">' + v.icon + '</div>' +
-        '<div class="veh-meta"><div class="veh-name">' + v.name + '</div>' +
-        '<div class="veh-sub">' + v.parts.length + ' 个零件</div></div>' +
-        '<div class="veh-done">✔</div>';
-      el.addEventListener('click', () => selectVehicle(v.id));
-      list.appendChild(el);
+
+  const matched = VEHICLES.filter((v) => matchVehicle(v, q));
+  $('garage-count').textContent = q
+    ? matched.length + ' / ' + VEHICLES.length + ' 辆'
+    : VEHICLES.length + ' 辆';
+
+  // 最近浏览只在没搜索时显示，免得和搜索结果抢位置
+  if (!q && recentIds.length) {
+    const block = document.createElement('div');
+    block.className = 'cat-block';
+    block.id = 'garage-recent';
+    block.appendChild(garageLabel('🕘 最近浏览'));
+    const body = document.createElement('div');
+    body.className = 'cat-items';
+    recentIds.forEach((id) => {
+      const v = VEHICLES.find((x) => x.id === id);
+      if (v) body.appendChild(vehItem(v));
     });
+    block.appendChild(body);
+    list.appendChild(block);
+  }
+
+  CATEGORIES.forEach((cat) => {
+    const items = matched.filter((v) => v.category === cat);
+    if (!items.length) return;
+    const block = document.createElement('div');
+    block.className = 'cat-block' + (!q && collapsedCats.has(cat) ? ' collapsed' : '');
+    const label = garageLabel(CATEGORY_META[cat].icon + ' ' + cat);
+    label.classList.add('collapsible');
+    const caret = document.createElement('span');
+    caret.className = 'cat-caret';
+    caret.textContent = '▾';
+    label.prepend(caret);
+    label.addEventListener('click', () => {
+      if (garageQuery()) return;
+      if (collapsedCats.has(cat)) collapsedCats.delete(cat);
+      else collapsedCats.add(cat);
+      block.classList.toggle('collapsed');
+      saveGaragePrefs();
+    });
+    block.appendChild(label);
+    const body = document.createElement('div');
+    body.className = 'cat-items';
+    items.forEach((v) => body.appendChild(vehItem(v)));
+    block.appendChild(body);
+    list.appendChild(block);
   });
-  $('garage-count').textContent = VEHICLES.length + ' 辆';
+
+  if (!matched.length) {
+    const empty = document.createElement('div');
+    empty.className = 'garage-empty';
+    empty.textContent = '没找到「' + q + '」相关的车型';
+    list.appendChild(empty);
+  }
   refreshGarageState();
+}
+
+// 只重绘「最近浏览」这一块，避免整列表重建把滚动位置顶回去
+function renderRecent() {
+  const list = $('garage-list');
+  const old = $('garage-recent');
+  if (garageQuery()) return;
+  if (!recentIds.length) {
+    if (old) old.remove();
+    return;
+  }
+  const block = document.createElement('div');
+  block.className = 'cat-block';
+  block.id = 'garage-recent';
+  block.appendChild(garageLabel('🕘 最近浏览'));
+  const body = document.createElement('div');
+  body.className = 'cat-items';
+  recentIds.forEach((id) => {
+    const v = VEHICLES.find((x) => x.id === id);
+    if (v) body.appendChild(vehItem(v));
+  });
+  block.appendChild(body);
+  if (old) list.replaceChild(block, old);
+  else list.prepend(block);
+  refreshGarageState();
+}
+
+function rememberVehicle(id) {
+  const next = [id, ...recentIds.filter((x) => x !== id)].slice(0, GARAGE_RECENT_MAX);
+  if (next.join(',') === recentIds.join(',')) return;
+  recentIds = next;
+  saveGaragePrefs();
+  renderRecent();
 }
 
 function refreshGarageState() {
@@ -1114,6 +1230,8 @@ function selectVehicle(id) {
   $('pp-steps').innerHTML = v.steps.map((s) => '<li>' + s + '</li>').join('');
   setMode('explore', true);
   sfx('select');
+  if (!firstSelect) rememberVehicle(v.id);
+  firstSelect = false;
   refreshGarageState();
   hint('点一点零件，看看它是什么～');
 }

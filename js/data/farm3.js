@@ -92,7 +92,7 @@ export const rotarytiller = {
       ]
     },
     {
-      id: 'tiller', name: '旋耕刀轴', color: '#c8372d', pos: [0, 0, 0], off: [0, 0.6, -3.0],
+      id: 'tiller', name: '旋耕刀轴', color: '#c8372d', pos: [0, 0.36, -1.86], off: [0, 0.6, -3.0],
       desc: '红色的旋耕机罩壳下面是一根横着的刀轴，上面焊着一排弯刀，转起来把土削碎。',
       tip: '刀轴转速很高，作业时人绝不能站在旋耕机后面。',
       spin: 'x',
@@ -123,7 +123,7 @@ export const rotarytiller = {
         // 限深轮
         box(0.10, 0.30, 0.06, 0x33383f, 0, 0.36, -2.32),
         cyl(0.18, 0.18, 0.12, 0x1b1b1b, 0, 0.20, -2.36, { r: [0, 0, Math.PI / 2], seg: 18, rough: 0.9 })
-      ]
+      ].map((pc) => ({ ...pc, p: [pc.p[0], pc.p[1] - 0.36, pc.p[2] + 1.86] }))
     },
     oneWheel('wf_l', '左前轮', -0.72, 1.25, 0.45, 0.26, 0xc9ced4),
     oneWheel('wf_r', '右前轮', 0.72, 1.25, 0.45, 0.26, 0xc9ced4),

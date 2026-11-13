@@ -1,4 +1,4 @@
-import { C, box, cyl, tor, cone, fourWheels, wheelSet, hull, arch, glassPatch, lamp, tailLamp } from './common.js';
+import { C, box, cyl, tor, cone, fourWheels, wheelSet, hull, arch, glassPatch, lamp, tailLamp, mergeParts } from './common.js';
 
 // 公交车
 export const bus = {
@@ -10,7 +10,7 @@ export const bus = {
   intro: '长长的车厢能一次载很多人，车门又宽又低，上下车很方便。',
   steps: ['发动机带动车轮前进', '变速箱让车子平稳起步', '宽车门方便乘客上下车', '车厢里有很多扶手和座椅'],
   parts: [
-    {
+    mergeParts({
       id: 'body', name: '车身', color: '#f0c020', pos: [0, 0, 0], off: [0, 3.2, 0],
       desc: '又长又高的车厢，能坐几十位乘客。',
       tip: '公交车地板很低，方便老人和小朋友上车。',
@@ -96,7 +96,18 @@ export const bus = {
         arch(0.56, 0.06, 0x262a2f, -1.21, 0.5, -2.9),
         arch(0.56, 0.06, 0x262a2f, 1.21, 0.5, -2.9)
       ]
-    },
+    }, {
+      id: 'mirrors', name: '后视镜', color: '#2b2b2b', pos: [0, 0, 0], off: [0, 2.2, 1.8],
+      desc: '帮助司机看到车身两侧和后面。',
+      tip: '公交车后视镜很大，还有盲区提示。',
+      pieces: [-1.28, 1.28].flatMap((x) => [
+        box(0.14, 0.05, 0.05, 0x2b2b2b, x - Math.sign(x) * 0.07, 2.2, 3.95),
+        box(0.05, 0.45, 0.3, 0x2b2b2b, x, 1.95, 3.9)
+      ])
+    }, {
+      id: 'body', name: '车身与后视镜', desc: '又长又高的车厢能坐几十位乘客，车头两侧的大后视镜帮司机看清周围。',
+      tip: '公交车地板很低，方便老人和小朋友上车。'
+    }),
     {
       id: 'windows', name: '车窗玻璃', color: '#9fd8f0', pos: [0, 0, 0], off: [0, 2.0, -2.4],
       desc: '大面积的玻璃，让乘客看到窗外的风景。',
@@ -153,15 +164,6 @@ export const bus = {
       desc: '前面是白色大灯，后面是红色尾灯。',
       tip: '转弯时还有黄色的转向灯在闪。',
       pieces: [-0.64, 0.64].flatMap((x) => lamp(x, 0, 0, 0.44, 0.2, { d: 0.05 }))
-    },
-    {
-      id: 'mirrors', name: '后视镜', color: '#2b2b2b', pos: [0, 0, 0], off: [0, 2.2, 1.8],
-      desc: '帮助司机看到车身两侧和后面。',
-      tip: '公交车后视镜很大，还有盲区提示。',
-      pieces: [-1.28, 1.28].flatMap((x) => [
-        box(0.14, 0.05, 0.05, 0x2b2b2b, x - Math.sign(x) * 0.07, 2.2, 3.95),
-        box(0.05, 0.45, 0.3, 0x2b2b2b, x, 1.95, 3.9)
-      ])
     }
   ]
 };
@@ -300,7 +302,7 @@ export const firetruck = {
         box(0.16, 0.22, 0.5, 0xc9ced4, 0, 0, 2.9)
       ]
     },
-    {
+    mergeParts({
       id: 'tank', name: '水箱', color: '#b8bec6', pos: [0, 1.45, -1.1], off: [0, 1.9, -1.4],
       desc: '装满水，到了火场马上就能喷水。',
       tip: '消防车还可以接上街边的消防栓补水。',
@@ -308,8 +310,7 @@ export const firetruck = {
         box(1.85, 1.1, 3.2, 0xb8bec6, 0, 0, 0),
         box(0.6, 0.12, 0.5, 0x8f969e, 0, 0.6, 0.8)
       ]
-    },
-    {
+    }, {
       id: 'hose', name: '水管卷盘', color: '#d9a02b', pos: [0, 1.35, -3.05], off: [0, 0.9, -2.0],
       desc: '长长的水带，可以拉到着火的地方。',
       tip: '水带可以一节一节接起来，最长能拉几百米。',
@@ -317,7 +318,10 @@ export const firetruck = {
         tor(0.38, 0.14, 0xd9a02b, 0, 0, 0, { r: [0, Math.PI / 2, 0] }),
         cyl(0.14, 0.14, 0.5, 0x8f969e, 0, 0, 0, { r: [0, 0, Math.PI / 2] })
       ]
-    },
+    }, {
+      id: 'tank', name: '水箱与水管', desc: '车厢里装满几吨水，旁边卷着长长的水带，接上水枪就能灭火。',
+      tip: '消防车还可以接上街边的消防栓补水。'
+    }),
     {
       id: 'beacon', name: '警灯', color: '#ff3b3b', pos: [0, 2.4, 2.35], off: [0, 2.4, 0.9],
       desc: '红色的警灯不停闪烁，提醒大家避让。',

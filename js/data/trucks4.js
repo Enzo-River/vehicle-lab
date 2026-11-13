@@ -143,25 +143,25 @@ export const flatbed = {
     },
     ...fourWheels({ r: 0.52, w: 0.34, x: 1.02, zf: 4.2, zr: 2.5 }),
     {
-      id: 'tr_l', name: '左后三轴轮组', color: '#2b2b2b', pos: [-1.02, 0.52, 0], off: [-1.8, 0.2, 0],
+      id: 'tr_l', name: '左后三轴轮组', color: '#2b2b2b', pos: [-1.02, 0.52, -6.2], off: [-1.8, 0.2, 0],
       desc: '挂车后面有三根轴、六个轮子，一起分担货物的重量。',
       tip: '三轴挂车转弯时轮胎会“蹭”地面，所以转弯要慢一点。',
       spin: 'x',
       pieces: [
-        ...shiftZ(wheelSet(0.52, 0.34), -5.2),
-        ...shiftZ(wheelSet(0.52, 0.34), -6.2),
-        ...shiftZ(wheelSet(0.52, 0.34), -7.2)
+        ...shiftZ(wheelSet(0.52, 0.34), 1.0),
+        ...shiftZ(wheelSet(0.52, 0.34), 0),
+        ...shiftZ(wheelSet(0.52, 0.34), -1.0)
       ]
     },
     {
-      id: 'tr_r', name: '右后三轴轮组', color: '#2b2b2b', pos: [1.02, 0.52, 0], off: [1.8, 0.2, 0],
+      id: 'tr_r', name: '右后三轴轮组', color: '#2b2b2b', pos: [1.02, 0.52, -6.2], off: [1.8, 0.2, 0],
       desc: '右侧同样是三个轮子，左右共六个轮支撑车尾。',
       tip: '挂车轮胎气压要经常检查，爆胎会让货物失去平衡。',
       spin: 'x',
       pieces: [
-        ...shiftZ(wheelSet(0.52, 0.34), -5.2),
-        ...shiftZ(wheelSet(0.52, 0.34), -6.2),
-        ...shiftZ(wheelSet(0.52, 0.34), -7.2)
+        ...shiftZ(wheelSet(0.52, 0.34), 1.0),
+        ...shiftZ(wheelSet(0.52, 0.34), 0),
+        ...shiftZ(wheelSet(0.52, 0.34), -1.0)
       ]
     }
   ]

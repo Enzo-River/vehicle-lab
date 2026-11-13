@@ -1,4 +1,4 @@
-import { C, box, cyl, tor, fourWheels, hull, glassPatch, lamp, tailLamp, arch, underbody } from './common.js';
+import { C, box, cyl, tor, fourWheels, hull, glassPatch, lamp, tailLamp, arch, underbody, mergeParts } from './common.js';
 
 // 面包车座舱轮廓：车头短、前挡风倾斜，车顶平直延伸到车尾
 const CAB_VAN = [
@@ -26,7 +26,7 @@ export const minivan = {
   intro: '面包车像一个会跑的小房间，车顶高高的，能坐七个人，后排座椅放倒还能装下大件行李。',
   steps: ['车身方方正正，把空间尽量留给乘客', '侧滑门往后一拉，上下车不占地方', '后排座椅可以折叠，行李厢变得很大', '发动机放在车头，车厢里更安静'],
   parts: [
-    {
+    mergeParts({
       id: 'body', name: '车身', color: '#3d5a73', pos: [0, 0, 0], off: [0, 2.6, 0],
       desc: '方方正正的厢式车身，车顶高、地板低，里面能站能坐。',
       tip: '面包车的车头很短，发动机横着放在前面，车厢空间就变大了。',
@@ -98,8 +98,7 @@ export const minivan = {
         arch(0.42, 0.05, VAN, -0.95, 0.36, -1.45),
         arch(0.42, 0.05, VAN, 0.95, 0.36, -1.45)
       ]
-    },
-    {
+    }, {
       id: 'windows', name: '车窗玻璃', color: '#9fd8f0', pos: [0, 0, 0], off: [0, 1.7, -1.4],
       desc: '大块玻璃让车厢很亮，后排乘客也能看清外面。',
       tip: '面包车后门通常只能从外面打开，是为了防止小朋友误开车门。',
@@ -124,7 +123,10 @@ export const minivan = {
         box(1.28, 0.05, 0.05, 0x14181d, 0, 1.68, 1.44),
         box(1.14, 0.045, 0.05, 0x14181d, 0, 1.19, 1.86)
       ]
-    },
+    }, {
+      id: 'body', name: '车身与车窗', desc: '方方正正的厢式车身空间很大，大块玻璃让车厢很亮，后排也能看清外面。',
+      tip: '面包车的车头很短，发动机横着放在前面，车厢空间就变大了。'
+    }),
     {
       id: 'slide_door', name: '侧滑门', color: '#3d5a73', pos: [0.95, 0, 0.27], off: [1.7, 0.2, -0.4],
       desc: '往后一拉就滑开，停在窄车位也能让乘客下车。',

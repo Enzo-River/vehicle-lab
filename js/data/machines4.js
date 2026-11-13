@@ -182,16 +182,16 @@ export const grader = {
       spin: 'x', pieces: wheelSet(0.55, 0.36)
     },
     {
-      id: 'wr_l', name: '左后轮组', color: '#2b2b2b', pos: [-1.02, 0.55, 0], off: [-1.8, 0.2, 0],
+      id: 'wr_l', name: '左后轮组', color: '#2b2b2b', pos: [-1.02, 0.55, -2.625], off: [-1.8, 0.2, 0],
       desc: '后轮是两组双轮，像四只脚一样稳稳撑住车身。',
       tip: '双后轮能把重量分散开，压过软土也不容易陷下去。',
-      spin: 'x', pieces: [...shiftZ(wheelSet(0.55, 0.36), -2.1), ...shiftZ(wheelSet(0.55, 0.36), -3.15)]
+      spin: 'x', pieces: [...shiftZ(wheelSet(0.55, 0.36), 0.525), ...shiftZ(wheelSet(0.55, 0.36), -0.525)]
     },
     {
-      id: 'wr_r', name: '右后轮组', color: '#2b2b2b', pos: [1.02, 0.55, 0], off: [1.8, 0.2, 0],
+      id: 'wr_r', name: '右后轮组', color: '#2b2b2b', pos: [1.02, 0.55, -2.625], off: [1.8, 0.2, 0],
       desc: '右边也是两组双轮，左右一起提供抓地力。',
       tip: '后轮是驱动轮，发动机的动力就是从这里传到地面的。',
-      spin: 'x', pieces: [...shiftZ(wheelSet(0.55, 0.36), -2.1), ...shiftZ(wheelSet(0.55, 0.36), -3.15)]
+      spin: 'x', pieces: [...shiftZ(wheelSet(0.55, 0.36), 0.525), ...shiftZ(wheelSet(0.55, 0.36), -0.525)]
     },
     {
       id: 'lights', name: '车灯', color: '#ffe6a3', pos: [0, 0, 0], off: [0, 0.4, 3.6],
